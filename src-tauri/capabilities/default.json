@@ -1,0 +1,24 @@
+{
+  "$schema": "https://schema.tauri.app/config/2/Capability",
+  "identifier": "default",
+  "description": "Default capabilities for Alora",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "shell:allow-open",
+    "dialog:allow-open",
+    "fs:default",
+    {
+      "identifier": "fs:allow-read-dir",
+      "allow": [{"path": "**"}]
+    },
+    {
+      "identifier": "fs:allow-read-file",
+      "allow": [{"path": "**"}]
+    },
+    "core:window:allow-minimize",
+    "core:window:allow-toggle-maximize",
+    "core:window:allow-close",
+    "core:window:allow-start-dragging"
+  ]
+}
