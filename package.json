@@ -13,10 +13,13 @@
     "@tauri-apps/api": "^2.10.1",
     "@tauri-apps/plugin-dialog": "^2.7.0",
     "@tauri-apps/plugin-fs": "^2.5.0",
+    "@types/wavesurfer.js": "^6.0.12",
+    "framer-motion": "^12.38.0",
     "lucide-react": "^1.11.0",
     "music-metadata-browser": "^2.5.11",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "wavesurfer.js": "^7.12.6"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.2.4",

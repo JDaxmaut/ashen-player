@@ -5,13 +5,13 @@ import { invoke } from "@tauri-apps/api/core";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { 
-  Activity, Music, ListMusic as PlaylistIcon, Settings, 
+  Flame as Activity, Music, ListMusic as PlaylistIcon, Settings, 
   Play, Pause, SkipBack, SkipForward, Shuffle, Repeat,
   Heart, Mic, ListMusic, Volume2, VolumeX,
-  ChevronLeft, ChevronRight, Search, Bell, Minus, Square, X,
-  Home, Folder, Heart as HeartFilled,
-  Clock, Plus, Trash2
+  ChevronLeft, ChevronRight, Search, Minus, Square, X,
+  Home, Folder, Heart as HeartFilled, Plus, Trash2, Maximize2
 } from "lucide-react";
+import NowPlayingOverlay from "./NowPlayingOverlay";
 
 const MUSIC_EXTENSIONS = ['.mp3', '.flac', '.wav', '.m4a', '.ogg', '.aac', '.wma', '.aiff'];
 
@@ -155,7 +155,7 @@ function SettingsPage({ libraryPath, setLibraryPath, onSave, gaplessEnabled, set
                 <div className="flex items-center justify-between">
                   <div>
                     <div className="text-on-surface">Launch on startup</div>
-                    <div className="text-outline text-sm">Automatically start Alora when you log in</div>
+                    <div className="text-outline text-sm">Automatically start Ember when you log in</div>
                   </div>
                   <button 
                     onClick={() => { setStartupEnabled(!startupEnabled); saveToStorage("startupEnabled", !startupEnabled); }}
@@ -260,7 +260,7 @@ function SettingsPage({ libraryPath, setLibraryPath, onSave, gaplessEnabled, set
                   <Activity className="w-8 h-8 text-bg" />
                 </div>
                 <div>
-                  <h3 className="text-xl font-bold text-white">Alora Music Player</h3>
+                  <h3 className="text-xl font-bold text-white">Ember Music Player</h3>
                   <p className="text-outline">Electric Premium</p>
                 </div>
               </div>
@@ -273,7 +273,7 @@ function SettingsPage({ libraryPath, setLibraryPath, onSave, gaplessEnabled, set
           )}
           
           <div className="text-center pt-4">
-            <span className="text-outline text-sm">Alora v0.1.0 • Electric Premium</span>
+            <span className="text-outline text-sm">Ember v0.1.0 • Flame Edition</span>
           </div>
         </div>
       </div>
@@ -303,7 +303,7 @@ function PlaylistsPage({ playlists, onSelectPlaylist, onCreatePlaylist, onEditPl
         {playlists.map((playlist) => (
           <div key={playlist.id} className="group relative glass-panel rounded-xl p-4 hover:bg-white/10 transition-colors">
             <button onClick={() => onSelectPlaylist(playlist)} className="w-full text-left">
-              <div className={`aspect-square rounded-lg mb-4 group-hover:scale-[1.02] transition-transform duration-300 flex items-center justify-center overflow-hidden ${playlist.cover?.startsWith('data:') ? '' : 'bg-gradient-to-br ' + (playlist.cover || 'from-primary-container/30 to-tertiary-container/30')}`}>
+              <div className={`aspect-square rounded-lg mb-4 group-hover:scale-[1.02] transition-transform duration-300 flex items-center justify-center overflow-hidden ${playlist.cover?.startsWith('data:') ? '' : 'bg-gradient-to-br ' + (playlist.cover || 'from-primary/20 to-secondary-container/20')}`}>
                 {playlist.cover?.startsWith('data:') ? <img src={playlist.cover} alt="" className="w-full h-full object-cover" /> : <PlaylistIcon className="w-12 h-12 text-white/50" />}
               </div>
               <div className="text-sm font-medium text-on-surface truncate">{playlist.name}</div>
@@ -356,10 +356,10 @@ function LibraryPage({
     return 0;
   });
   return (
-    <div className="p-8 bg-gradient-to-br from-[#f751a1]/20 via-white/[0.02] to-[#d0bcff]/20 rounded-xl">
+    <div className="p-8 bg-gradient-to-br from-primary/10 via-surface-container/30 to-secondary-container/10 rounded-xl">
       <section className="flex gap-8 mb-12">
 <div className={`w-[280px] shrink-0 group relative`}>
-          <div className={`aspect-square rounded-lg mb-4 flex items-center justify-center shadow-[0_20px_60px_-15px_rgba(255,176,205,0.4)] group-hover:scale-[1.02] transition-transform duration-300 overflow-hidden ${playlistCover?.startsWith('data:') ? '' : 'bg-gradient-to-br from-primary-container/30 to-tertiary-container/30'}`}>
+          <div className={`aspect-square rounded-lg mb-4 flex items-center justify-center shadow-[0_20px_60px_-15px_rgba(247,189,72,0.4)] group-hover:scale-[1.02] transition-transform duration-300 overflow-hidden ring-1 ring-white/[0.05] ${playlistCover?.startsWith('data:') ? 'shadow-[0_20px_60px_-15px_rgba(247,189,72,0.3),0_0_40px_rgba(247,189,72,0.15)]' : 'bg-gradient-to-br from-primary/20 to-secondary-container/20'}`}>
             {playlistCover?.startsWith('data:') ? (
               <>
                 <img src={playlistCover} alt="" className="w-full h-full object-cover" />
@@ -384,8 +384,8 @@ function LibraryPage({
         
         <div className="flex flex-col min-h-0 justify-center">
           <span className="text-primary text-[11px] uppercase tracking-widest mb-2 block">{playlistName ? "Playlist" : "Library"}</span>
-          <h2 className="text-[48px] font-bold text-white mb-4 leading-tight">{playlistName || "All Tracks"}</h2>
-          <p className="text-outline text-base mb-6">{playlistName ? `${tracks.length} tracks` : `${tracks.length} tracks in your collection`}</p>
+          <h2 className="text-4xl md:text-5xl font-serif text-white mb-4 leading-tight tracking-wide uppercase">{playlistName || "ALL TRACKS"}</h2>
+          <p className="text-stone-500 text-[10px] font-bold mb-6 tracking-[0.2em] uppercase">{playlistName ? `${tracks.length} TRACKS` : `${tracks.length} TRACKS`}</p>
           <div className="flex items-center gap-4">
             <button onClick={onPlayAll} className="px-8 py-3 rounded-full bg-gradient-to-r from-primary to-tertiary-container text-bg text-[12px] font-semibold uppercase tracking-wider flex items-center gap-2 hover:shadow-[0_0_20px_rgba(255,176,205,0.4)] transition-shadow">
               <Play className="w-4 h-4" fill="currentColor" />
@@ -403,18 +403,19 @@ function LibraryPage({
       {history.length > 0 && (
         <div className="mb-8">
           <div className="flex items-center gap-2 mb-4">
-            <Clock className="w-4 h-4 text-outline" />
-            <span className="text-[11px] text-outline uppercase tracking-widest">Recently Played</span>
+            <span className="text-[11px] text-stone-500 uppercase tracking-widest">Recently Played</span>
           </div>
-          <div className="flex gap-2 overflow-x-auto pb-2">
+          <div className="flex gap-3 overflow-x-auto pb-2">
             {history.slice(0, 5).map((item, idx) => (
               <button 
                 key={idx}
                 onClick={() => onPlayTrack(item.track)}
-                className="shrink-0 flex items-center gap-2 px-3 py-2 bg-white/5 rounded-lg hover:bg-white/10 transition-colors"
+                className="shrink-0 flex items-center gap-3 px-3 py-2 bg-white/[0.03] backdrop-blur-sm rounded-lg hover:bg-white/[0.08] border border-white/[0.05] transition-all"
               >
-                <Music className="w-4 h-4 text-outline" />
-                <span className="text-sm text-on-surface truncate max-w-[120px]">{item.track.title}</span>
+                <div className="w-8 h-8 rounded bg-gradient-to-br from-primary/20 to-secondary-container/20 flex items-center justify-center">
+                  <div className="w-3 h-3 rounded-full bg-primary/50"></div>
+                </div>
+                <span className="text-sm text-stone-300 truncate max-w-[120px]">{item.track.title}</span>
               </button>
             ))}
           </div>
@@ -427,21 +428,21 @@ function LibraryPage({
           <button
             key={s}
             onClick={() => onSortBy(s)}
-            className={`px-3 py-1 rounded-full text-xs transition-colors ${sortBy === s ? "bg-primary text-black" : "bg-white/10 text-outline hover:text-white"}`}
+            className={`px-3 py-1 rounded-sm text-xs transition-all duration-300 ${sortBy === s ? "text-primary/80" : "bg-transparent text-stone-500 hover:text-white"}`}
           >
             {s.charAt(0).toUpperCase() + s.slice(1)}
           </button>
         ))}
       </div>
 
-      <div className="grid grid-cols-[40px_1fr_150px_80px] gap-4 px-4 py-2 border-b border-white/5 text-outline text-[11px] uppercase tracking-wider mb-2">
+      <div className="grid grid-cols-[40px_1fr_150px_80px] gap-4 px-4 py-2 border-b border-white/[0.03] text-stone-600 text-[9px] uppercase tracking-widest mb-2 opacity-30">
         <div className="text-center">#</div>
         <div>Title</div>
         <div className="mr-8">Album</div>
         <div className="text-right"></div>
       </div>
       
-      <div className="space-y-1 mb-12">
+      <div className="space-y-1 mb-12 min-h-0">
         {sortedTracks.map((track, index) => {
           const isFavorite = favorites.some(f => f.path === track.path);
           return (
@@ -520,7 +521,7 @@ function FavoritesPage({ favorites, onPlayTrack, onRemoveFavorite }: {
         <h2 className="text-2xl font-bold text-white">Your Favorites</h2>
       </div>
       
-      <div className="grid grid-cols-[40px_1fr_150px_80px] gap-4 px-4 py-2 border-b border-white/5 text-outline text-[11px] uppercase tracking-wider mb-2">
+      <div className="grid grid-cols-[40px_1fr_150px_80px] gap-4 px-4 py-3 border-b border-white/[0.05] text-stone-500 text-[10px] uppercase tracking-widest mb-2">
         <div className="text-center">#</div>
         <div>Title</div>
         <div className="mr-8">Added</div>
@@ -737,6 +738,8 @@ function App() {
   const [sortBy, setSortBy] = useState<"title" | "artist" | "album" | "duration">("title");
   const [gaplessEnabled, setGaplessEnabled] = useState(true);
   const [normEnabled, setNormEnabled] = useState(() => loadFromStorage("alora_normEnabled", true));
+  const [showOverlay, setShowOverlay] = useState(false);
+  
 
   setTrackLoudness;
   setGaplessEnabled;
@@ -778,7 +781,7 @@ function App() {
   }
 
   useEffect(() => { loadLibrary(); setTimeout(() => setIsLoading(false), 2000); }, [libraryPath]);
-  useEffect(() => { if (libraryPath) { loadLibrary(); setTimeout(() => setIsLoading(false), 2000); } }, []);
+useEffect(() => { if (libraryPath) { loadLibrary(); setTimeout(() => setIsLoading(false), 2000); } }, []);
   
   useEffect(() => {
     if (audioRef.current) {
@@ -862,6 +865,28 @@ function App() {
       setTracks(newTracks);
       saveToStorage(STORAGE_KEYS.tracks, newTracks);
       setPlaylists(playlists);
+      
+      const loadMissingMetadata = async () => {
+        const tracksWithoutMeta = newTracks.filter(t => !t.cover || t.artist === 'Unknown Artist' || t.duration === 0);
+        const batchSize = 15;
+        for (let i = 0; i < tracksWithoutMeta.length; i += batchSize) {
+          const batch = tracksWithoutMeta.slice(i, i + batchSize);
+          await Promise.all(batch.map(async (track) => {
+            try {
+              const meta = await invoke<{ title: string; artist: string; album: string; duration: number; cover: string | null } | null>("get_audio_metadata", { path: track.path });
+              if (meta) {
+                setTracks(prev => {
+                  const updated = prev.map(t => t.id === track.id ? { ...t, title: meta.title, artist: meta.artist, album: meta.album, duration: meta.duration, cover: meta.cover || undefined } : t);
+                  return updated;
+                });
+              }
+            } catch {}
+          }));
+        }
+        saveToStorage(STORAGE_KEYS.tracks, newTracks);
+      };
+      
+      loadMissingMetadata();
     } catch (e) { 
       console.error("Failed to load library:", e);
     }
@@ -1001,6 +1026,13 @@ function App() {
     if (progressInterval.current) { clearInterval(progressInterval.current); progressInterval.current = null; }
   };
 
+  const handleOverlaySeek = (percent: number) => {
+    if (!audioRef.current || !currentTrack) return;
+    const newTime = (percent / 100) * audioRef.current.duration;
+    audioRef.current.currentTime = newTime;
+    setProgress(percent);
+  };
+
   const handleProgressClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!audioRef.current || !currentTrack) return;
     const rect = e.currentTarget.getBoundingClientRect();
@@ -1067,26 +1099,26 @@ function App() {
       setCurrentView("library");
       setCurrentPlaylist(playlist);
       
-      const loadMetadataBatch = async (startIdx: number, batchSize: number) => {
-        const batch = newTracks.slice(startIdx, startIdx + batchSize);
-        for (const track of batch) {
-          try {
-            const meta = await invoke<{ title: string; artist: string; album: string; duration: number; cover: string | null } | null>("get_audio_metadata", { path: track.path });
-            if (meta) {
-              setTracks(prev => {
-                const updated = prev.map(t => t.id === track.id ? { ...t, title: meta.title, artist: meta.artist, album: meta.album, duration: meta.duration, cover: meta.cover || undefined } : t);
-                saveToStorage(STORAGE_KEYS.tracks, updated);
-                return updated;
-              });
-            }
-          } catch {}
-        }
-        if (startIdx + batchSize < newTracks.length) {
-          setTimeout(() => loadMetadataBatch(startIdx + batchSize, batchSize), 100);
+      const loadMetadataParallel = async () => {
+        const batchSize = 20;
+        for (let i = 0; i < newTracks.length; i += batchSize) {
+          const batch = newTracks.slice(i, i + batchSize);
+          await Promise.all(batch.map(async (track) => {
+            try {
+              const meta = await invoke<{ title: string; artist: string; album: string; duration: number; cover: string | null } | null>("get_audio_metadata", { path: track.path });
+              if (meta) {
+                setTracks(prev => {
+                  const updated = prev.map(t => t.id === track.id ? { ...t, title: meta.title, artist: meta.artist, album: meta.album, duration: meta.duration, cover: meta.cover || undefined } : t);
+                  return updated;
+                });
+              }
+            } catch {}
+          }));
+          saveToStorage(STORAGE_KEYS.tracks, newTracks);
         }
       };
       
-      loadMetadataBatch(0, 5);
+      loadMetadataParallel();
       
       if (newTracks.length > 0 && newTracks[0].cover) {
         setPlaylists(prev => {
@@ -1153,7 +1185,7 @@ function App() {
             <div className="h-full bg-gradient-to-r from-primary to-tertiary-container animate-[loading_1.5s_ease-in-out_infinite]"></div>
           </div>
         </div>
-        <h1 className="text-3xl font-bold text-white tracking-tight mb-2">Alora</h1>
+        <h1 className="text-3xl font-bold text-white tracking-tight mb-2">Ember</h1>
         <p className="text-primary text-sm uppercase tracking-widest">Loading...</p>
         <style>{`
           @keyframes loading {
@@ -1173,10 +1205,10 @@ function App() {
       {showCreatePlaylist && <CreatePlaylistModal onClose={() => setShowCreatePlaylist(false)} onCreate={handleConfirmCreatePlaylist} />}
       {editingPlaylist && <EditPlaylistModal playlist={editingPlaylist} onClose={() => setEditingPlaylist(null)} onSave={handleSavePlaylist} onDelete={handleDeletePlaylist} />}
       
-      <header className="fixed top-0 left-0 right-0 z-[60] bg-black border-b border-white/5 h-14 flex items-center justify-between pl-6" data-tauri-drag-region>
+      <header className="fixed top-0 left-0 right-0 z-[60] bg-surface-container-lowest/80 backdrop-blur-md border-b border-surface-container-high/50 h-14 flex items-center justify-between pl-6 shadow-2xl" data-tauri-drag-region>
         <div className="flex items-center gap-4 w-1/3">
-          <button onClick={goBack} disabled={historyIndex === 0} className={`p-2 transition-colors ${historyIndex === 0 ? 'text-white/20 cursor-not-allowed' : 'text-outline hover:text-white'}`}><ChevronLeft className="w-5 h-5" /></button>
-          <button onClick={goForward} disabled={historyIndex === navHistory.length - 1} className={`p-2 transition-colors ${historyIndex === navHistory.length - 1 ? 'text-white/20 cursor-not-allowed' : 'text-outline hover:text-white'}`}><ChevronRight className="w-5 h-5" /></button>
+          <button onClick={goBack} disabled={historyIndex === 0} className={`p-2 transition-colors ${historyIndex === 0 ? 'text-white/20 cursor-not-allowed' : 'text-outline hover:text-primary'}`}><ChevronLeft className="w-5 h-5" /></button>
+          <button onClick={goForward} disabled={historyIndex === navHistory.length - 1} className={`p-2 transition-colors ${historyIndex === navHistory.length - 1 ? 'text-white/20 cursor-not-allowed' : 'text-outline hover:text-primary'}`}><ChevronRight className="w-5 h-5" /></button>
         </div>
         <div className="flex-1 flex justify-center w-1/3 max-w-xl">
           <div className="relative w-full max-w-md group">
@@ -1184,7 +1216,7 @@ function App() {
             <input 
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full bg-white/5 border border-transparent hover:border-white/10 rounded-md py-1.5 pl-10 pr-4 text-sm text-on-surface focus:outline-none focus:bg-white/10 focus:border-white/20 transition-all placeholder-outline" 
+              className="w-full bg-stone-900/50 border border-outline/20 hover:border-outline/40 rounded-md py-1.5 pl-10 pr-4 text-sm text-on-surface focus:outline-none focus:bg-stone-900/80 focus:border-primary/50 transition-all placeholder-outline" 
               placeholder="Search artists, tracks, or playlists..." 
               type="text"
             />
@@ -1192,63 +1224,58 @@ function App() {
         </div>
         <div className="flex items-center justify-end w-1/3 h-full">
           <div className="flex items-center gap-4 mr-4">
-            <button className="relative text-outline hover:text-on-surface transition-colors p-1 rounded-full hover:bg-white/5">
-              <Bell className="w-5 h-5" />
-              <span className="absolute top-1 right-1 w-2 h-2 bg-primary rounded-full"></span>
-            </button>
-            <div className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity">
-              <div className="w-7 h-7 rounded-full bg-gradient-to-r from-primary to-tertiary-container"></div>
-              <span className="text-[12px] text-on-surface hidden lg:block">User</span>
-            </div>
           </div>
           <div className="flex items-center h-full">
-            <button onClick={() => getCurrentWindow().minimize()} className="w-12 h-full flex items-center justify-center hover:bg-white/10 transition-colors text-outline hover:text-white"><Minus className="w-4 h-4" /></button>
-            <button onClick={() => getCurrentWindow().toggleMaximize()} className="w-12 h-full flex items-center justify-center hover:bg-white/10 transition-colors text-outline hover:text-white"><Square className="w-3 h-3" /></button>
-            <button onClick={() => getCurrentWindow().close()} className="w-12 h-full flex items-center justify-center hover:bg-[#e81123] hover:text-white transition-colors text-outline"><X className="w-4 h-4" /></button>
+            <button onClick={() => getCurrentWindow().minimize()} className="w-12 h-full flex items-center justify-center hover:bg-stone-800/50 transition-colors text-outline hover:text-primary"><Minus className="w-4 h-4" /></button>
+            <button onClick={() => getCurrentWindow().toggleMaximize()} className="w-12 h-full flex items-center justify-center hover:bg-stone-800/50 transition-colors text-outline hover:text-primary"><Square className="w-3 h-3" /></button>
+            <button onClick={() => getCurrentWindow().close()} className="w-12 h-full flex items-center justify-center hover:bg-red-900/80 hover:text-white transition-colors text-outline"><X className="w-4 h-4" /></button>
           </div>
         </div>
       </header>
 
       <div className="flex flex-1 pt-14">
-        <aside className="w-[260px] bg-black border-r border-white/10 flex flex-col py-8 px-4 fixed left-0 top-14 h-[calc(100vh-3.5rem)] z-40">
-          <div className="px-6 mb-8 flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-gradient-to-r from-primary to-tertiary-container flex items-center justify-center shrink-0 shadow-[0_0_15px_rgba(255,176,205,0.5)]">
-              <Activity className="w-5 h-5 text-bg" />
+        <aside className="w-20 md:w-[280px] bg-surface-container-low/95 border-r border-white/[0.03] flex flex-col py-6 px-2 md:py-10 md:px-4 fixed left-0 top-14 h-[calc(100vh-3.5rem)] z-40 shadow-[10px_0_30px_-5px_rgba(0,0,0,0.8)] font-serif tracking-tight text-sm uppercase transition-all duration-300">
+          <div className="px-2 md:px-6 mb-6 flex flex-col md:flex-row items-center gap-2 md:gap-4">
+            <div className="w-10 h-10 md:w-14 md:h-14 rounded-full overflow-hidden border border-primary/30 shadow-[0_0_15px_rgba(247,189,72,0.3)]">
+              <div className="w-full h-full bg-gradient-to-br from-primary/20 to-secondary-container/20 flex items-center justify-center">
+                <Activity className="w-5 h-5 md:w-7 md:h-7 text-primary" />
+              </div>
             </div>
-            <div>
-              <h1 className="text-white text-xl font-semibold tracking-tight leading-none">Alora</h1>
-              <span className="text-primary text-[10px] opacity-80 uppercase tracking-widest mt-1 block">Electric Premium</span>
+            <div className="hidden md:block text-center">
+              <h1 className="text-primary font-bold tracking-widest text-lg">EMBER</h1>
             </div>
           </div>
 
-          <nav className="flex-1 px-4 space-y-2">
-            <div className="text-[11px] text-outline uppercase tracking-widest px-4 mb-4 mt-6">Browse</div>
-            <button onClick={() => navigateTo("library")} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${currentView === "library" ? "bg-white/10 text-white border-l-4 border-primary" : "text-gray-500 hover:text-white hover:bg-white/5"}`}>
-              <Home className={`w-5 h-5 ${currentView === "library" ? "text-primary" : ""}`} />
-              Home
+          <nav className="flex-1 px-1 md:px-4 space-y-1">
+            <div className="hidden md:block text-[11px] text-outline uppercase tracking-widest px-4 mb-4 mt-6">Browse</div>
+            <button onClick={() => navigateTo("library")} className={`w-full flex items-center gap-2 md:gap-4 py-3 pl-4 md:pl-6 rounded-sm transition-all duration-300 ${currentView === "library" ? "text-primary font-bold border-r-[2px] border-primary shadow-[0_0_10px_rgba(212,175,55,0.4)] bg-gradient-to-r from-primary/10 to-transparent" : "text-stone-500 hover:text-primary hover:bg-stone-800/50"}`}>
+              <Home className={`w-4 h-4 md:w-5 md:h-5 ${currentView === "library" ? "text-primary" : ""}`} />
+              <span className="hidden md:inline">Home</span>
             </button>
-            <button onClick={() => navigateTo("playlists")} className={`w-full flex items-center gap-3 px-4 py-3 text-gray-500 hover:text-white hover:bg-white/5 rounded-lg transition-all ${currentView === "playlists" ? "bg-white/10 text-white" : ""}`}>
-              <PlaylistIcon className="w-5 h-5" />
-              Playlists
+            <button onClick={() => navigateTo("playlists")} className={`w-full flex items-center gap-2 md:gap-4 py-3 pl-4 md:pl-6 rounded-sm transition-all duration-300 ${currentView === "playlists" ? "text-primary font-bold border-r-[2px] border-primary shadow-[0_0_10px_rgba(212,175,55,0.4)] bg-gradient-to-r from-primary/10 to-transparent" : "text-stone-500 hover:text-primary hover:bg-stone-800/50"}`}>
+              <PlaylistIcon className="w-4 h-4 md:w-5 md:h-5 text-stone-500" />
+              <span className="hidden md:inline">Playlists</span>
             </button>
-            <button onClick={() => navigateTo("favorites")} className={`w-full flex items-center gap-3 px-4 py-3 text-gray-500 hover:text-white hover:bg-white/5 rounded-lg transition-all ${currentView === "favorites" ? "bg-white/10 text-white" : ""}`}>
-              <Heart className={`w-5 h-5 ${currentView === "favorites" ? "text-primary" : ""}`} />
-              Favorites
+            <button onClick={() => navigateTo("favorites")} className={`w-full flex items-center gap-2 md:gap-4 py-3 pl-4 md:pl-6 rounded-sm transition-all duration-300 ${currentView === "favorites" ? "text-primary font-bold border-r-[2px] border-primary shadow-[0_0_10px_rgba(212,175,55,0.4)] bg-gradient-to-r from-primary/10 to-transparent" : "text-stone-500 hover:text-primary hover:bg-stone-800/50"}`}>
+              <Heart className={`w-4 h-4 md:w-5 md:h-5 ${currentView === "favorites" ? "text-primary" : ""}`} />
+              <span className="hidden md:inline">Favorites</span>
             </button>
           </nav>
 
-          <div className="mt-auto px-4 space-y-2 pb-24">
-            <div className="text-[11px] text-outline uppercase tracking-widest px-4 mb-4">System</div>
-            <button onClick={() => navigateTo("settings")} className={`w-full flex items-center gap-3 px-4 py-3 text-gray-500 hover:text-white hover:bg-white/5 rounded-lg transition-all ${currentView === "settings" ? "bg-white/10 text-white" : ""}`}>
-              <Settings className="w-5 h-5" />
-              Settings
+          <div className="mt-auto px-1 md:px-4 space-y-1 pb-20 md:pb-24">
+            <div className="hidden md:block text-[11px] text-outline uppercase tracking-widest px-4 mb-4">System</div>
+            <button onClick={() => navigateTo("settings")} className={`w-full flex items-center gap-2 md:gap-4 py-3 pl-4 md:pl-6 rounded-sm transition-all duration-300 ${currentView === "settings" ? "text-primary font-bold border-r-[2px] border-primary shadow-[0_0_10px_rgba(212,175,55,0.4)] bg-gradient-to-r from-primary/10 to-transparent" : "text-stone-500 hover:text-primary hover:bg-stone-800/50"}`}>
+              <Settings className="w-4 h-4 md:w-5 md:h-5" />
+              <span className="hidden md:inline">Settings</span>
             </button>
           </div>
         </aside>
 
-        <main className="flex-1 ml-[260px] relative h-[calc(100vh-3.5rem)] overflow-y-auto pb-24">
-          <div className="absolute top-0 left-0 w-full h-[500px] bg-gradient-to-b from-primary-container/20 to-transparent pointer-events-none -z-10"></div>
-          <div className="absolute top-[-100px] right-[-100px] w-[400px] h-[400px] bg-tertiary-container/30 rounded-full blur-[100px] pointer-events-none -z-10"></div>
+        <main className="flex-1 ml-20 md:ml-[280px] relative h-[calc(100vh-3.5rem)] overflow-y-auto pb-20 md:pb-24 p-3 md:p-8 border-t border-white/[0.03]">
+          <div className="fixed inset-0 pointer-events-none z-[-1] opacity-40 mix-blend-overlay" style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg viewBox=\'0 0 200 200\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cfilter id=\'noiseFilter\'%3E%3CfeTurbulence type=\'fractalNoise\' baseFrequency=\'0.85\' numOctaves=\'3\' stitchTiles=\'stitch\'/%3E%3C/filter%3E%3Crect width=\'100%25\' height=\'100%25\' filter=\'url(%23noiseFilter)\'/%3E%3C/svg%3E")'}}></div>
+          <div className="fixed inset-0 bg-gradient-to-br from-primary/5 via-transparent to-secondary-container/5 pointer-events-none z-[-1]"></div>
+          <div className="absolute top-0 right-0 w-[600px] h-[600px] bg-primary/5 rounded-full blur-[150px] pointer-events-none z-[-1]"></div>
+          <div className="absolute top-0 left-0 w-full h-[500px] bg-gradient-to-b from-primary/10 to-transparent pointer-events-none"></div>
 
           <div className="max-w-7xl mx-auto">
             {currentView === "library" && (
@@ -1298,68 +1325,81 @@ function App() {
         </main>
       </div>
 
-      <footer className="fixed bottom-0 w-full z-50 border-t border-white/10 bg-black/60 backdrop-blur-2xl shadow-[0_-10px_20px_rgba(0,0,0,0.5)] h-24 px-6 lg:px-12 flex items-center justify-between text-xs uppercase tracking-widest text-white/60">
-        <div className="flex items-center gap-4 w-1/3 min-w-0">
-          <div className="relative group hidden sm:block">
-            {currentTrack?.cover ? <img src={currentTrack.cover} alt="" className="w-14 h-14 rounded-md object-cover shrink-0" /> : <div className="w-14 h-14 rounded-md bg-surface-container shrink-0 flex items-center justify-center"><Activity className="w-5 h-5 text-outline" /></div>}
-            <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity rounded-md cursor-pointer">
-              <Activity className="w-5 h-5 text-white" />
+      <footer className="fixed bottom-0 w-full z-50 border-t border-surface-container-high/30 bg-surface-container-lowest/80 backdrop-blur-xl shadow-[0_-10px_20px_rgba(0,0,0,0.5)] h-16 md:h-24 px-3 md:px-12 flex items-center justify-between text-xs uppercase tracking-widest text-white/60">
+        <div className="flex items-center gap-2 md:gap-4 w-1/3 min-w-0">
+          <div className="relative group hidden md:block">
+            {currentTrack?.cover ? <img src={currentTrack.cover} alt="" className="w-12 h-12 md:w-16 md:h-16 rounded-xl object-cover shrink-0 shadow-[0_0_15px_rgba(247,189,72,0.2)] cursor-pointer" onClick={() => setShowOverlay(true)} /> : <div className="w-12 h-12 md:w-16 md:h-16 rounded-xl bg-gradient-to-br from-primary/10 to-secondary-container/20 border border-white/[0.05] shrink-0 cursor-pointer" onClick={() => setShowOverlay(true)}></div>}
+            <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity rounded-md cursor-pointer" onClick={() => setShowOverlay(true)}>
+              <Maximize2 className="w-4 h-4 text-white" />
             </div>
           </div>
           <div className="min-w-0 truncate">
-            <div className="text-sm text-white font-medium truncate mb-1">{currentTrack?.title || "No track selected"}</div>
-            <div className="text-outline text-[11px] truncate hover:underline cursor-pointer">{currentTrack?.artist || "Select a track"}</div>
+            <div className="text-xs md:text-sm text-white font-medium truncate mb-0.5 md:mb-1">{currentTrack?.title || "No track"}</div>
+            <div className="text-[10px] md:text-[11px] text-outline truncate hover:underline cursor-pointer">{currentTrack?.artist || "Select a track"}</div>
           </div>
           {currentTrack && (
-            <button onClick={() => toggleFavorite(currentTrack)} className="hidden lg:block text-primary ml-4 hover:scale-110 transition-transform p-2">
-              {favorites.some(f => f.path === currentTrack?.path) ? <HeartFilled className="w-4 h-4" fill="currentColor" /> : <Heart className="w-4 h-4" />}
+            <button onClick={() => toggleFavorite(currentTrack)} className="text-primary ml-2 hover:scale-110 transition-transform p-1">
+              {favorites.some(f => f.path === currentTrack?.path) ? <HeartFilled className="w-3 h-4" fill="currentColor" /> : <Heart className="w-3 h-4" />}
             </button>
           )}
         </div>
 
-        <div className="flex flex-col items-center justify-center w-full max-w-2xl px-4 flex-1">
-          <div className="flex items-center gap-4 lg:gap-6 mb-2">
-            <button onClick={toggleShuffle} className={`text-white/60 hover:text-white transition-colors p-2 active:scale-90 hidden sm:block ${shuffleEnabled ? "text-primary" : ""}`} title="Shuffle">
-              <Shuffle className="w-5 h-5" />
+        <div className="flex flex-col items-center justify-center w-full max-w-xl px-1 md:px-4 flex-1">
+          <div className="flex items-center gap-2 md:gap-4 lg:gap-6 mb-1 md:mb-2">
+            <button onClick={toggleShuffle} className={`text-white/40 hover:text-white/70 transition-colors p-1 md:p-2 active:scale-90 hidden sm:block ${shuffleEnabled ? "text-primary" : ""}`} title="Shuffle">
+              <Shuffle className="w-4 h-4 md:w-5 md:h-5" />
             </button>
-            <button onClick={prevTrack} className="text-white/60 hover:text-white transition-colors p-2 active:scale-90" title="Previous">
-              <SkipBack className="w-7 h-7" />
+            <button onClick={prevTrack} className="text-white/60 hover:text-primary transition-colors p-1 md:p-2 active:scale-90" title="Previous">
+              <SkipBack className="w-5 h-5 md:w-7 md:h-7" />
             </button>
-            <button onClick={togglePlay} className="w-12 h-12 rounded-full bg-white flex items-center justify-center text-black hover:scale-105 active:scale-95 transition-all shadow-[0_0_15px_rgba(255,255,255,0.3)]" title="Play">
-              {isPlaying ? <Pause className="w-7 h-7" /> : <Play className="w-7 h-7 ml-0.5" />}
+            <button onClick={togglePlay} className="w-10 h-10 md:w-12 md:h-12 rounded-full bg-white flex items-center justify-center text-black hover:scale-105 active:scale-95 transition-all shadow-[0_0_15px_rgba(255,255,255,0.3)]" title="Play">
+              {isPlaying ? <Pause className="w-5 h-5 md:w-7 md:h-7" /> : <Play className="w-5 h-5 md:w-7 md:h-7 ml-0.5" />}
             </button>
-            <button onClick={nextTrack} className="text-white/60 hover:text-white transition-colors p-2 active:scale-90" title="Next">
-              <SkipForward className="w-7 h-7" />
+            <button onClick={nextTrack} className="text-white/60 hover:text-primary transition-colors p-1 md:p-2 active:scale-90" title="Next">
+              <SkipForward className="w-5 h-5 md:w-7 md:h-7" />
             </button>
-            <button onClick={toggleRepeat} className={`text-white/60 hover:text-white transition-colors p-2 active:scale-90 hidden sm:block ${repeatMode !== "none" ? "text-primary" : ""}`} title="Repeat">
-              <Repeat className={`w-5 h-5 ${repeatMode === "one" ? "scale-125" : ""}`} />
+            <button onClick={toggleRepeat} className={`text-white/40 hover:text-white/70 transition-colors p-1 md:p-2 active:scale-90 hidden sm:block ${repeatMode !== "none" ? "text-primary" : ""}`} title="Repeat">
+              <Repeat className={`w-4 h-4 md:w-5 md:h-5 ${repeatMode === "one" ? "scale-125" : ""}`} />
             </button>
           </div>
-          <div className="w-full flex items-center gap-3 text-[11px] normal-case tracking-normal">
-            <span className="text-outline w-8 text-right">{formatDuration(currentTrack ? Math.floor((progress / 100) * currentTrack.duration) : 0)}</span>
-            <div className="flex-1 h-1.5 bg-surface-container-highest rounded-full overflow-hidden group cursor-pointer relative" onClick={handleProgressClick}>
-              <div className="absolute top-0 left-0 h-full w-[35%] bg-gradient-to-r from-[#0566d9] to-[#f751a1] group-hover:to-primary transition-colors" style={{ width: `${progress}%` }}></div>
-              <div className="absolute top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full opacity-0 group-hover:opacity-100 shadow-md transform -translate-x-1.5 transition-opacity" style={{ left: `${progress}%` }}></div>
+          <div className="w-full flex items-center gap-1 md:gap-3 text-[10px] md:text-[11px] normal-case tracking-normal">
+            <span className="text-outline w-6 md:w-8 text-right">{formatDuration(currentTrack ? Math.floor((progress / 100) * currentTrack.duration) : 0)}</span>
+            <div className="flex-1 h-1 md:h-1.5 bg-white/[0.1] rounded-full overflow-hidden group cursor-pointer relative" onClick={handleProgressClick}>
+              <div className="absolute top-0 left-0 h-full bg-gradient-to-r from-primary to-secondary shadow-[0_0_10px_rgba(247,189,72,0.5)] transition-all" style={{ width: `${progress}%` }}></div>
+              <div className="absolute top-1/2 -translate-y-1/2 w-2 h-2 md:w-3 md:h-3 bg-white rounded-full shadow-[0_0_8px_rgba(247,189,72,0.8)] opacity-0 group-hover:opacity-100 transform -translate-x-1 transition-all" style={{ left: `${progress}%` }}></div>
+              <div className="absolute top-1/2 -translate-y-1/2 w-1.5 h-1.5 bg-primary rounded-full shadow-[0_0_6px_rgba(247,189,72,1)] transform -translate-x-1/2" style={{ left: `${progress}%` }}></div>
             </div>
-            <span className="text-outline w-8">{currentTrack ? formatDuration(currentTrack.duration) : "0:00"}</span>
+            <span className="text-outline w-6 md:w-8">{currentTrack ? formatDuration(currentTrack.duration) : "0:00"}</span>
           </div>
         </div>
 
-        <div className="hidden lg:flex items-center justify-end gap-4 w-1/3">
-          <button className="text-white/60 hover:text-white transition-colors p-2 active:scale-90" title="Lyrics">
-            <Mic className="w-5 h-5" />
+        <div className="hidden lg:flex items-center justify-end gap-4 md:gap-6 w-1/3">
+          <button className="text-white/60 hover:text-primary transition-colors p-1 md:p-2 active:scale-90" title="Lyrics">
+            <Mic className="w-4 h-4 md:w-5 md:h-5" />
           </button>
-          <button className="text-white/60 hover:text-white transition-colors p-2 active:scale-90" title="Queue">
-            <ListMusic className="w-5 h-5" />
+          <button className="text-white/60 hover:text-primary transition-colors p-1 md:p-2 active:scale-90" title="Queue">
+            <ListMusic className="w-4 h-4 md:w-5 md:h-5" />
           </button>
-          <div className="flex items-center gap-2 w-32 group">
-            <button onClick={toggleMute} className="text-white/60 hover:text-white transition-colors p-1" title="Volume">
-              {volume === 0 ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
+          <div className="flex items-center gap-1 md:gap-2 w-20 md:w-32 group">
+            <button onClick={toggleMute} className="text-white/60 hover:text-primary transition-colors p-1" title="Volume">
+              {volume === 0 ? <VolumeX className="w-3 h-4 md:w-4 md:h-4" /> : <Volume2 className="w-3 h-4 md:w-4 md:h-4" />}
             </button>
-            <input type="range" min="0" max="100" value={volume} onChange={handleVolumeChange} className="flex-1 h-2 rounded-full appearance-none cursor-pointer" style={{ background: `linear-gradient(to right, #ffb0cd 0%, #ffb0cd ${volume}%, rgba(255,255,255,0.2) ${volume}%, rgba(255,255,255,0.2) 100%)`, WebkitAppearance: 'none' }} />
+            <input type="range" min="0" max="100" value={volume} onChange={handleVolumeChange} className="flex-1 h-1 md:h-1.5 rounded-full appearance-none cursor-pointer" style={{ background: `linear-gradient(to right, #f7bd48 0%, #f7bd48 ${volume}%, rgba(255,255,255,0.1) ${volume}%, rgba(255,255,255,0.1) 100%)`, WebkitAppearance: 'none' }} />
           </div>
-        </div>
-      </footer>
+</div>
+        </footer>
+
+      <NowPlayingOverlay
+        isOpen={showOverlay}
+        onClose={() => setShowOverlay(false)}
+        currentTrack={currentTrack}
+        isPlaying={isPlaying}
+        progress={progress}
+        onTogglePlay={togglePlay}
+        onPrevTrack={prevTrack}
+        onNextTrack={nextTrack}
+        onSeek={handleOverlaySeek}
+      />
     </div>
   );
 }

@@ -1,8 +1,9 @@
 use base64::{Engine as _, engine::general_purpose};
 use lofty::file::{AudioFile, TaggedFileExt};
 use lofty::probe::Probe;
-use lofty::tag::Accessor;
+use lofty::tag::{Accessor, TagExt};
 use serde::{Deserialize, Serialize};
+use std::fs;
 use std::path::Path;
 use std::process::Command;
 
@@ -95,6 +96,57 @@ fn get_audio_cover(path: String) -> Option<String> {
 }
 
 #[tauri::command]
+fn save_audio_cover(path: String) -> Option<String> {
+    eprintln!("[SAVE_COVER] Saving cover for: {}", path);
+    
+    let audio_path = Path::new(&path);
+    if !audio_path.exists() {
+        eprintln!("[SAVE_COVER] File not found: {}", path);
+        return None;
+    }
+    
+    let tagged_file = Probe::open(&path).ok()?.read().ok()?;
+    let tag = tagged_file.primary_tag().or_else(|| tagged_file.first_tag())?;
+    let picture = tag.pictures().get(0)?;
+    let ext = match picture.mime_type() {
+        Some(m) => {
+            let s = m.as_str();
+            if s.contains("png") { "png" } else { "jpg" }
+        }
+        None => "jpg"
+    };
+    
+    let parent = audio_path.parent()?;
+    let filename = format!("folder.{}", ext);
+    let cover_path = parent.join(&filename);
+    
+    fs::write(&cover_path, picture.data()).ok()?;
+    eprintln!("[SAVE_COVER] Saved to: {:?}", cover_path);
+    
+    Some(cover_path.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+fn get_folder_cover(path: String) -> Option<String> {
+    eprintln!("[FOLDER_COVER] Checking: {}", path);
+    
+    let audio_path = Path::new(&path);
+    let parent = audio_path.parent()?;
+    
+    for ext in &["jpg", "jpeg", "png", "gif"] {
+        let cover_path = parent.join(format!("folder.{}", ext));
+        if cover_path.exists() {
+            let data = fs::read(&cover_path).ok()?;
+            let base64_img = general_purpose::STANDARD.encode(&data);
+            let mime = if ext == &"png" { "image/png" } else { "image/jpeg" };
+            return Some(format!("data:{};base64,{}", mime, base64_img));
+        }
+    }
+    
+    None
+}
+
+#[tauri::command]
 fn get_track_loudness(path: String) -> Option<AudioLoudness> {
     eprintln!("[LOUDNESS] Analyzing: {}", path);
     
@@ -175,7 +227,7 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
-        .invoke_handler(tauri::generate_handler![get_music_folder, get_audio_cover, get_audio_metadata, get_track_loudness])
+        .invoke_handler(tauri::generate_handler![get_music_folder, get_audio_cover, get_audio_metadata, get_track_loudness, save_audio_cover, get_folder_cover])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

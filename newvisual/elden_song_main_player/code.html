@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>ELDEN SONG - Main Player</title>
+<!-- Google Fonts -->
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,200..800;1,6..72,200..800&amp;family=Noto+Serif:ital,wght@0,100..900;1,100..900&amp;display=swap" rel="stylesheet"/>
+<!-- Material Symbols -->
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<!-- Theme Configuration -->
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "on-secondary-fixed": "#3b0900",
+                        "secondary": "#ffb5a0",
+                        "on-primary-container": "#392700",
+                        "outline-variant": "#4f4535",
+                        "on-primary-fixed-variant": "#5d4200",
+                        "surface-container-lowest": "#0e0e0e",
+                        "surface-container-low": "#1c1b1b",
+                        "on-error-container": "#ffdad6",
+                        "secondary-fixed-dim": "#ffb5a0",
+                        "outline": "#9c8f7b",
+                        "error": "#ffb4ab",
+                        "primary-fixed": "#ffdea6",
+                        "surface-container-highest": "#353535",
+                        "secondary-fixed": "#ffdbd1",
+                        "on-primary-fixed": "#271900",
+                        "on-error": "#690005",
+                        "on-secondary-fixed-variant": "#872000",
+                        "on-tertiary": "#303030",
+                        "inverse-primary": "#7b5800",
+                        "surface-container": "#20201f",
+                        "inverse-surface": "#e5e2e1",
+                        "background": "#131313",
+                        "on-tertiary-fixed-variant": "#474747",
+                        "inverse-on-surface": "#313030",
+                        "on-secondary-container": "#541100",
+                        "surface-container-high": "#2a2a2a",
+                        "surface-dim": "#131313",
+                        "primary-container": "#ba880f",
+                        "tertiary": "#c8c6c6",
+                        "surface-tint": "#f7bd48",
+                        "surface-variant": "#353535",
+                        "error-container": "#93000a",
+                        "on-primary": "#412d00",
+                        "on-tertiary-fixed": "#1b1c1c",
+                        "primary": "#f7bd48",
+                        "on-background": "#e5e2e1",
+                        "on-surface": "#e5e2e1",
+                        "surface-bright": "#393939",
+                        "tertiary-fixed": "#e4e2e1",
+                        "tertiary-container": "#929090",
+                        "on-surface-variant": "#d3c4af",
+                        "secondary-container": "#ff5625",
+                        "on-secondary": "#601400",
+                        "primary-fixed-dim": "#f7bd48",
+                        "tertiary-fixed-dim": "#c8c6c6",
+                        "on-tertiary-container": "#2a2a2a",
+                        "surface": "#131313"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "xs": "4px",
+                        "lg": "48px",
+                        "md": "24px",
+                        "margin": "64px",
+                        "sm": "12px",
+                        "xl": "80px",
+                        "gutter": "24px",
+                        "base": "8px"
+                    },
+                    "fontFamily": {
+                        "body-lg": ["Newsreader"],
+                        "headline-xl": ["Noto Serif"],
+                        "label-sm": ["Newsreader"],
+                        "body-md": ["Newsreader"],
+                        "headline-lg": ["Noto Serif"]
+                    },
+                    "fontSize": {
+                        "body-lg": ["18px", {"lineHeight": "1.6", "fontWeight": "400"}],
+                        "headline-xl": ["48px", {"lineHeight": "1.2", "letterSpacing": "0.1em", "fontWeight": "400"}],
+                        "label-sm": ["12px", {"lineHeight": "1.2", "letterSpacing": "0.2em", "fontWeight": "600"}],
+                        "body-md": ["16px", {"lineHeight": "1.5", "fontWeight": "400"}],
+                        "headline-lg": ["32px", {"lineHeight": "1.3", "letterSpacing": "0.05em", "fontWeight": "400"}]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        /* Custom Gothic Backgrounds */
+        .bg-void {
+            background: radial-gradient(circle at center, #1c1b1b 0%, #0e0e0e 100%);
+        }
+        .bg-hammered-iron {
+            background-color: #2E2E2E;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.08'/%3E%3C/svg%3E");
+        }
+    </style>
+</head>
+<body class="bg-surface-container-lowest text-on-surface h-screen overflow-hidden flex font-body-md selection:bg-primary selection:text-on-primary">
+<!-- SideNavBar (Shared Component) -->
+<nav class="fixed left-0 h-full w-72 bg-stone-900/90 border-r border-amber-900/20 font-serif tracking-tight text-sm uppercase shadow-[10px_0_30px_-5px_rgba(0,0,0,0.8)] border-r border-stone-800 flex flex-col h-full py-10 z-50">
+<!-- Header -->
+<div class="px-6 mb-12 flex items-center gap-4">
+<div class="w-12 h-12 rounded-full overflow-hidden border border-amber-900/50 shadow-inner">
+<img alt="User Sigil" class="w-full h-full object-cover grayscale brightness-75 contrast-125" data-alt="close up of a tarnished medieval silver coin with a faint etched crest on a dark background" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDIxfgN8fvGwcK1frljpHI6T3LBEbrIKS2_4OnLqAlzSZog95BpQ6_cp4qhEoxwHe6bIDzCP4-oBwuaT_bDotUPRZfznv32j62Vtlac2M1ZPo2S61ljw2Tmk2tKkisA-CaaD1Z2lI_RXdpCdOg40HYkzwpfJldG_wCbGIV5D5ybu3L9RU9Lzz8HFU7QnD7_koGqqXTl07cvUxVTGKB6wYGuXyBCVsMbAu-8yZ0N7oZeWBPr1MsdZuLv_kD4lSRX2100Mv5YjxT3uxob"/>
+</div>
+<div>
+<h2 class="text-amber-500 font-bold tracking-widest">The Voyager</h2>
+<p class="text-stone-500 text-xs mt-1">Level 99 Bard</p>
+</div>
+</div>
+<!-- Main Navigation Tabs -->
+<ul class="flex-1 flex flex-col gap-2">
+<!-- Active Tab -->
+<li>
+<a class="flex items-center gap-4 py-3 text-amber-400 font-bold border-r-2 border-amber-500 pl-4 bg-gradient-to-r from-amber-900/10 to-transparent Transition-all duration-300 ease-in-out w-full" href="#">
+<span class="material-symbols-outlined text-[20px]" style="font-variation-settings: 'FILL' 1;">home</span>
+                    Sanctum
+                </a>
+</li>
+<!-- Inactive Tabs -->
+<li>
+<a class="flex items-center gap-4 py-3 text-stone-600 pl-4 hover:text-amber-200 hover:bg-stone-800/50 Transition-all duration-300 ease-in-out w-full" href="#">
+<span class="material-symbols-outlined text-[20px]">library_music</span>
+                    Archives
+                </a>
+</li>
+<li>
+<a class="flex items-center gap-4 py-3 text-stone-600 pl-4 hover:text-amber-200 hover:bg-stone-800/50 Transition-all duration-300 ease-in-out w-full" href="#">
+<span class="material-symbols-outlined text-[20px]">menu_book</span>
+                    Grimoires
+                </a>
+</li>
+<li>
+<a class="flex items-center gap-4 py-3 text-stone-600 pl-4 hover:text-amber-200 hover:bg-stone-800/50 Transition-all duration-300 ease-in-out w-full" href="#">
+<span class="material-symbols-outlined text-[20px]">settings</span>
+                    Settings
+                </a>
+</li>
+</ul>
+<!-- Footer Navigation Tabs -->
+<ul class="flex flex-col gap-2 mt-auto">
+<li>
+<a class="flex items-center gap-4 py-3 text-stone-600 pl-4 hover:text-amber-200 hover:bg-stone-800/50 Transition-all duration-300 ease-in-out w-full" href="#">
+<span class="material-symbols-outlined text-[20px]">help</span>
+                    Support
+                </a>
+</li>
+<li>
+<a class="flex items-center gap-4 py-3 text-stone-600 pl-4 hover:text-amber-200 hover:bg-stone-800/50 Transition-all duration-300 ease-in-out w-full" href="#">
+<span class="material-symbols-outlined text-[20px]">logout</span>
+                    Exit
+                </a>
+</li>
+</ul>
+</nav>
+<!-- Main Canvas Area -->
+<main class="flex-1 ml-72 relative flex flex-col bg-void">
+<!-- TopAppBar (Shared Component) -->
+<header class="docked full-width top-0 border-b-[0.5px] bg-stone-950/80 backdrop-blur-md border-stone-800/50 border-b shadow-2xl flex justify-between items-center w-full px-12 py-6 z-40 relative">
+<h1 class="font-serif italic tracking-widest uppercase text-2xl text-amber-500 drop-shadow-[0_0_8px_rgba(255,69,0,0.6)]">
+                ELDEN_SONG
+            </h1>
+<div class="flex items-center gap-6">
+<!-- Trailing Icon Actions -->
+<button class="text-amber-600 dark:text-amber-500 hover:bg-stone-900/50 hover:text-amber-200 transition-colors duration-500 rounded-full p-2 flex items-center justify-center">
+<span class="material-symbols-outlined">history</span>
+</button>
+<button class="text-amber-600 dark:text-amber-500 hover:bg-stone-900/50 hover:text-amber-200 transition-colors duration-500 rounded-full p-2 flex items-center justify-center">
+<span class="material-symbols-outlined">notifications</span>
+</button>
+<!-- Trailing Primary Action -->
+<button class="text-amber-600 dark:text-amber-500 hover:bg-stone-900/50 hover:text-amber-200 transition-colors duration-500 rounded-full p-2 flex items-center justify-center">
+<span class="material-symbols-outlined text-[28px]" style="font-variation-settings: 'FILL' 1;">account_circle</span>
+</button>
+</div>
+</header>
+<!-- Player Canvas -->
+<section class="flex-1 relative flex items-center justify-center p-xl overflow-hidden">
+<!-- Atmospheric Smoke Layer (Simulated with gradients/blur) -->
+<div class="absolute inset-0 pointer-events-none opacity-20">
+<div class="absolute top-1/4 left-1/4 w-1/2 h-1/2 bg-secondary-container blur-[120px] rounded-full mix-blend-screen"></div>
+<div class="absolute bottom-1/4 right-1/4 w-1/3 h-1/3 bg-outline blur-[100px] rounded-full mix-blend-screen"></div>
+</div>
+<!-- The Plate (Mid-ground Container) -->
+<div class="relative z-10 max-w-4xl w-full flex flex-col items-center bg-hammered-iron p-12 rounded-xl border border-[#4f4535] shadow-[0_20px_50px_rgba(0,0,0,0.8),inset_0_1px_0_rgba(156,143,123,0.3)]">
+<!-- Corner Ornaments (Skeuomorphic Detail) -->
+<div class="absolute top-2 left-2 w-3 h-3 border-t border-l border-primary opacity-50"></div>
+<div class="absolute top-2 right-2 w-3 h-3 border-t border-r border-primary opacity-50"></div>
+<div class="absolute bottom-2 left-2 w-3 h-3 border-b border-l border-primary opacity-50"></div>
+<div class="absolute bottom-2 right-2 w-3 h-3 border-b border-r border-primary opacity-50"></div>
+<!-- Album Art (Centerpiece) -->
+<div class="relative w-80 h-80 md:w-96 md:h-96 mb-12 rounded-DEFAULT overflow-hidden shadow-[0_0_60px_rgba(255,86,37,0.15)] ring-1 ring-outline/30 group">
+<!-- Overlay Volumetric Glow -->
+<div class="absolute inset-0 bg-gradient-to-t from-surface-container-lowest/80 via-transparent to-transparent z-10 pointer-events-none group-hover:opacity-80 transition-opacity duration-700"></div>
+<img alt="Album Cover" class="w-full h-full object-cover scale-105 group-hover:scale-100 transition-transform duration-[2s] ease-out filter brightness-90 contrast-125 sepia-[.2]" data-alt="oil painting of a burning gothic cathedral ruin at dusk with heavy cinematic fog and fiery orange embers floating in the air" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAT6TE2Vv24dIxlAbx1eqbZj-mYiOA7hTfaGBe3Jpas0ZnG6ok_YwPZMV0J6niW3gVyIQ4MxrHmu8uMDx6cuUCnkQ3oleY08cEMzf4ofuwwZtA7GfVr5Sri7IB_mquvtcD2zLgDCg5QlTeoHMhM8aAZ0whBS8upl39o3Rgu-LoFAXifbihGMkP6Fn1-5Ig8oPooTSRYGzEjkCHN0WVZBz9qxrcMDX9D1Dg5Rp4wZWN7mY-PCsNGbisY0G5LG23pWnbsfOsdMUoeMWvs"/>
+</div>
+<!-- Track Info -->
+<div class="text-center mb-10 w-full">
+<h2 class="font-headline-xl text-headline-xl text-on-surface mb-4 drop-shadow-md">Lament of the Erdtree</h2>
+<p class="font-headline-lg text-headline-lg text-primary/80 italic">Choir of the Tarnished</p>
+</div>
+<!-- Progress Bar (The Filament) -->
+<div class="w-full mb-12 flex items-center gap-4">
+<span class="font-label-sm text-label-sm text-outline-variant w-10 text-right">03:42</span>
+<div class="flex-1 h-[2px] bg-surface-container-highest relative rounded-full overflow-visible group cursor-pointer">
+<!-- Filled Groove -->
+<div class="absolute top-0 left-0 h-full bg-secondary-container shadow-[0_0_12px_#ff5625] w-[65%] rounded-full relative">
+<!-- Leading Edge Ember -->
+<div class="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-primary rounded-full shadow-[0_0_15px_#f7bd48,0_0_5px_#ffffff] opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+</div>
+</div>
+<span class="font-label-sm text-label-sm text-outline-variant w-10">07:15</span>
+</div>
+<!-- Controls -->
+<div class="flex items-center justify-center gap-10">
+<!-- Skip Previous -->
+<button class="text-outline hover:text-primary transition-colors duration-300 p-2 group">
+<span class="material-symbols-outlined text-[36px] group-active:scale-90 transition-transform">skip_previous</span>
+</button>
+<!-- Play/Pause (Wax Seal) -->
+<button class="w-20 h-20 rounded-full bg-secondary-container flex items-center justify-center shadow-[inset_0_-4px_8px_rgba(0,0,0,0.6),inset_0_4px_8px_rgba(255,255,255,0.2),0_10px_20px_rgba(0,0,0,0.5),0_0_30px_rgba(255,86,37,0.3)] border border-[#ffb4ab]/20 text-on-secondary-fixed hover:bg-[#ff6b40] transition-all duration-300 active:scale-95 active:shadow-[inset_0_4px_8px_rgba(0,0,0,0.8)] relative group">
+<!-- Subtle Rune Engraving Texture -->
+<div class="absolute inset-0 rounded-full opacity-20 pointer-events-none" style="background-image: radial-gradient(circle, transparent 20%, #3b0900 120%); mix-blend-mode: multiply;"></div>
+<span class="material-symbols-outlined text-[48px] relative z-10" style="font-variation-settings: 'FILL' 1;">play_arrow</span>
+</button>
+<!-- Skip Next -->
+<button class="text-outline hover:text-primary transition-colors duration-300 p-2 group">
+<span class="material-symbols-outlined text-[36px] group-active:scale-90 transition-transform">skip_next</span>
+</button>
+</div>
+<!-- Secondary Actions (Text-only Runes) -->
+<div class="mt-12 flex items-center justify-center gap-8 w-full border-t border-surface-container-highest pt-6 relative">
+<!-- Sword Cut effect for the border -->
+<div class="absolute top-0 left-1/2 -translate-x-1/2 w-3/4 h-[1px] bg-gradient-to-r from-transparent via-outline-variant to-transparent"></div>
+<button class="font-label-sm text-label-sm text-outline hover:text-primary transition-colors duration-300 uppercase tracking-widest relative group">
+                         Lyrics
+                         <div class="absolute -bottom-1 left-1/2 -translate-x-1/2 w-0 h-[1px] bg-primary group-hover:w-full transition-all duration-500 opacity-0 group-hover:opacity-100 bg-gradient-to-r from-transparent via-primary to-transparent"></div>
+</button>
+<button class="font-label-sm text-label-sm text-outline hover:text-primary transition-colors duration-300 uppercase tracking-widest relative group">
+                         Queue
+                         <div class="absolute -bottom-1 left-1/2 -translate-x-1/2 w-0 h-[1px] bg-primary group-hover:w-full transition-all duration-500 opacity-0 group-hover:opacity-100 bg-gradient-to-r from-transparent via-primary to-transparent"></div>
+</button>
+</div>
+</div>
+</section>
+</main>
+</body></html>
