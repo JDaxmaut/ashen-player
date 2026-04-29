@@ -275,7 +275,7 @@ function SearchPage({ onPlayTrack }: { onPlayTrack: (track: Track) => void }) {
   );
 }
 
-function SettingsPage({ libraryPath, setLibraryPath, onSave, gaplessEnabled, setGaplessEnabled, normEnabled, setNormEnabled, miniPlayerEnabled, setMiniPlayerEnabled }: { 
+function SettingsPage({ libraryPath, setLibraryPath, onSave, gaplessEnabled, setGaplessEnabled, normEnabled, setNormEnabled, miniPlayerEnabled, setMiniPlayerEnabled, eqEnabled, setEqEnabled, eqPreset, setEqPreset, eqBands, setEqBands, EQ_PRESETS, EQ_FREQUENCIES }: { 
   libraryPath: string; 
   setLibraryPath: (path: string) => void;
   onSave: () => void;
@@ -285,6 +285,14 @@ function SettingsPage({ libraryPath, setLibraryPath, onSave, gaplessEnabled, set
   setNormEnabled: (v: boolean) => void;
   miniPlayerEnabled: boolean;
   setMiniPlayerEnabled: (v: boolean) => void;
+  eqEnabled: boolean;
+  setEqEnabled: (v: boolean) => void;
+  eqPreset: string;
+  setEqPreset: (v: string) => void;
+  eqBands: number[];
+  setEqBands: (v: number[]) => void;
+  EQ_PRESETS: Record<string, number[]>;
+  EQ_FREQUENCIES: number[];
 }) {
   const [activeTab, setActiveTab] = useState("general");
   const [startupEnabled, setStartupEnabled] = useState(false);
@@ -434,6 +442,54 @@ function SettingsPage({ libraryPath, setLibraryPath, onSave, gaplessEnabled, set
                     <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform ${miniPlayerEnabled ? "right-1" : "left-1"}`}></div>
                   </button>
                 </div>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-on-surface">Equalizer</div>
+                    <div className="text-outline text-sm">10-band audio equalizer</div>
+                  </div>
+                  <button 
+                    onClick={() => setEqEnabled(!eqEnabled)}
+                    className={`w-12 h-6 rounded-full relative transition-colors ${eqEnabled ? "bg-primary-container" : "bg-surface-container-high"}`}
+                  >
+                    <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform ${eqEnabled ? "right-1" : "left-1"}`}></div>
+                  </button>
+                </div>
+                {eqEnabled && (
+                  <div className="space-y-4 pt-2">
+                    <div className="flex gap-2 flex-wrap">
+                      {Object.keys(EQ_PRESETS).map(preset => (
+                        <button
+                          key={preset}
+                          onClick={() => { setEqPreset(preset); setEqBands(EQ_PRESETS[preset]); }}
+                          className={`px-3 py-1 rounded-full text-sm transition-colors ${eqPreset === preset ? 'bg-primary text-black' : 'bg-surface-container-high text-outline hover:text-white'}`}
+                        >
+                          {preset}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {eqBands.map((value, index) => (
+                        <div key={index} className="flex-1 flex flex-col items-center">
+                          <input
+                            type="range"
+                            min="-12"
+                            max="12"
+                            value={value}
+                            onChange={(e) => {
+                              const newBands = [...eqBands];
+                              newBands[index] = parseInt(e.target.value);
+                              setEqBands(newBands);
+                              setEqPreset("Custom");
+                            }}
+                            className="h-32 w-4 bg-surface-container-high rounded-full appearance-none cursor-pointer vertical-slider"
+                            style={{ writingMode: 'vertical-lr', direction: 'rtl' }}
+                          />
+                          <span className="text-[10px] text-outline mt-1">{EQ_FREQUENCIES[index] >= 1000 ? `${EQ_FREQUENCIES[index]/1000}k` : EQ_FREQUENCIES[index]}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -949,6 +1005,77 @@ function App() {
     loadCovers();
   }, [playlists]);
   
+  const EQ_PRESETS: Record<string, number[]> = {
+    "Flat": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    "Bass": [6, 5, 4, 2, 0, 0, 0, 0, 0, 0],
+    "Treble": [0, 0, 0, 0, 0, 2, 4, 5, 6, 6],
+    "Rock": [5, 4, 2, 0, -1, 0, 2, 4, 5, 5],
+    "Pop": [-1, 0, 2, 4, 5, 4, 2, 0, -1, -2],
+    "Jazz": [3, 2, 0, 1, -1, -1, 0, 1, 2, 3],
+    "Classical": [4, 3, 2, 1, -1, -1, 0, 2, 3, 4],
+    "Electronic": [5, 4, 1, 0, -2, -1, 0, 2, 4, 5],
+    "HipHop": [6, 5, 3, 1, -1, -1, 0, 2, 3, 4],
+    "Acoustic": [3, 2, 1, 1, 2, 2, 3, 3, 2, 2],
+  };
+  const EQ_FREQUENCIES = [32, 64, 125, 250, 500, 1000, 2000, 4000, 8000, 16000];
+  
+  const [eqEnabled, setEqEnabled] = useState(false);
+  const [eqBands, setEqBands] = useState<number[]>(() => loadFromStorage("alora_eqBands", [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]));
+  const [eqPreset, setEqPreset] = useState("Flat");
+  
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const audioSourceRef = useRef<MediaElementAudioSourceNode | null>(null);
+  const eqFiltersRef = useRef<BiquadFilterNode[]>([]);
+  const gainNodeRef = useRef<GainNode | null>(null);
+
+  const setupAudioWithEQ = useCallback(() => {
+    if (!audioRef.current || audioContextRef.current) return;
+    
+    const ctx = new AudioContext();
+    audioContextRef.current = ctx;
+    
+    const source = ctx.createMediaElementSource(audioRef.current);
+    audioSourceRef.current = source;
+    
+    const filters: BiquadFilterNode[] = [];
+    let lastNode: AudioNode = source;
+    
+    const frequencies = [32, 64, 125, 250, 500, 1000, 2000, 4000, 8000, 16000];
+    for (let i = 0; i < 10; i++) {
+      const filter = ctx.createBiquadFilter();
+      filter.type = 'peaking';
+      filter.frequency.value = frequencies[i];
+      filter.Q.value = 1.4;
+      filter.gain.value = eqEnabled ? eqBands[i] : 0;
+      
+      lastNode.connect(filter);
+      lastNode = filter;
+      filters.push(filter);
+    }
+    
+    eqFiltersRef.current = filters;
+    
+    const gainNode = ctx.createGain();
+    gainNode.gain.value = 1;
+    gainNodeRef.current = gainNode;
+    
+    lastNode.connect(gainNode);
+    gainNode.connect(ctx.destination);
+  }, [eqEnabled, eqBands]);
+  
+  useEffect(() => {
+    if (eqFiltersRef.current.length > 0) {
+      eqFiltersRef.current.forEach((filter, i) => {
+        filter.gain.value = eqEnabled ? eqBands[i] : 0;
+      });
+    }
+  }, [eqBands, eqEnabled]);
+  
+  useEffect(() => {
+    if (eqEnabled && audioRef.current && isPlaying && !audioContextRef.current) {
+      setupAudioWithEQ();
+    }
+  }, [eqEnabled, isPlaying, setupAudioWithEQ]);
 
   setTrackLoudness;
   setGaplessEnabled;
@@ -1711,6 +1838,14 @@ function App() {
                 setNormEnabled={setNormEnabled}
                 miniPlayerEnabled={miniPlayerEnabled}
                 setMiniPlayerEnabled={setMiniPlayerEnabled}
+                eqEnabled={eqEnabled}
+                setEqEnabled={setEqEnabled}
+                eqPreset={eqPreset}
+                setEqPreset={setEqPreset}
+                eqBands={eqBands}
+                setEqBands={setEqBands}
+                EQ_PRESETS={EQ_PRESETS}
+                EQ_FREQUENCIES={EQ_FREQUENCIES}
               />
             )}
           </div>

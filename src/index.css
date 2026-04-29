@@ -107,3 +107,27 @@ input[type="range"]::-webkit-slider-thumb {
 input[type="range"]::-webkit-slider-thumb:hover {
   transform: scale(1.1);
 }
+
+.vertical-slider {
+  writing-mode: bt-lr;
+  -webkit-appearance: slider-vertical;
+  width: 8px;
+  height: 100px;
+  padding: 0 4px;
+}
+
+.vertical-slider::-webkit-slider-runnable-track {
+  width: 4px;
+  background: linear-gradient(to top, #353535, #353535);
+  border-radius: 2px;
+}
+
+.vertical-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 16px;
+  height: 16px;
+  background: white;
+  border-radius: 50%;
+  cursor: pointer;
+  margin-left: -4px;
+}
