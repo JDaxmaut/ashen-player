@@ -83,6 +83,18 @@ function darkenColor(color: string, amount: number): string {
   return color;
 }
 
+function getPlaylistCovers(playlistPath: string, allTracks: Track[]): string[] {
+  const folderPath = playlistPath.substring(0, playlistPath.lastIndexOf('\\'));
+  const playlistTracks = allTracks.filter(t => {
+    const trackFolder = t.path.substring(0, t.path.lastIndexOf('\\'));
+    return trackFolder === folderPath;
+  });
+  return playlistTracks
+    .filter(t => t.cover && t.cover.startsWith('data:'))
+    .slice(0, 4)
+    .map(t => t.cover!);
+}
+
 const MUSIC_EXTENSIONS = ['.mp3', '.flac', '.wav', '.m4a', '.ogg', '.aac', '.wma', '.aiff'];
 
 const isMusicFile = (filename: string): boolean => {
@@ -469,9 +481,9 @@ if (!playlistName && allPlaylists && allPlaylists.length > 0) {
                   className="group text-left p-4 rounded-xl bg-surface-container hover:bg-surface-container-high transition-colors"
                 >
                   <div className="aspect-square rounded-lg overflow-hidden bg-surface-container-high mb-3 shadow-lg group-hover:scale-[1.02] transition-transform">
-                    {playlist.trackCovers && playlist.trackCovers.length > 0 ? (
+                    {(() => { const covers = getPlaylistCovers(playlist.path, tracks); return covers.length > 0 ? (
                       <div className="w-full h-full grid grid-cols-2 grid-rows-2">
-                        {playlist.trackCovers.slice(0, 4).map((cover, i) => (
+                        {covers.slice(0, 4).map((cover, i) => (
                           <img key={i} src={cover} alt="" className="w-full h-full object-cover" />
                         ))}
                       </div>
@@ -479,7 +491,7 @@ if (!playlistName && allPlaylists && allPlaylists.length > 0) {
                       <div className="w-full h-full bg-gradient-to-br from-surface-container-high to-surface flex items-center justify-center">
                         <PlaylistIcon className="w-10 h-10 text-white/30" />
                       </div>
-                    )}
+                    ); })()}
                   </div>
                   <div className="text-sm text-on-surface truncate group-hover:text-primary transition-colors font-medium">{playlist.name}</div>
                   <div className="text-xs text-outline truncate">{playlist.track_count} tracks</div>
@@ -501,9 +513,9 @@ if (!playlistName && allPlaylists && allPlaylists.length > 0) {
                 className="group text-left"
               >
                 <div className="aspect-square rounded-lg overflow-hidden bg-surface-container-high mb-3 shadow-lg group-hover:scale-[1.02] transition-transform">
-                  {playlist.trackCovers && playlist.trackCovers.length > 0 ? (
+                  {(() => { const covers = getPlaylistCovers(playlist.path, tracks); return covers.length > 0 ? (
                     <div className="w-full h-full grid grid-cols-2 grid-rows-2">
-                      {playlist.trackCovers.slice(0, 4).map((cover, i) => (
+                      {covers.slice(0, 4).map((cover, i) => (
                         <img key={i} src={cover} alt="" className="w-full h-full object-cover" />
                       ))}
                     </div>
@@ -511,7 +523,7 @@ if (!playlistName && allPlaylists && allPlaylists.length > 0) {
                     <div className="w-full h-full bg-gradient-to-br from-surface-container-high to-surface flex items-center justify-center">
                       <PlaylistIcon className="w-16 h-16 text-white/30" />
                     </div>
-                  )}
+                  ); })()}
                 </div>
                 <div className="text-sm font-medium text-on-surface truncate group-hover:text-primary transition-colors">{playlist.name}</div>
                 <div className="text-xs text-outline truncate">{playlist.track_count} tracks</div>
@@ -879,6 +891,7 @@ function App() {
   const [sidebarPlaylistView, setSidebarPlaylistView] = useState<"compact" | "expanded">("expanded");
   const [titlebarHeight, setTitlebarHeight] = useState(56);
   const [sidebarWidth, setSidebarWidth] = useState(280);
+  const [rightSidebarWidth, setRightSidebarWidth] = useState(300);
   
   const [tracks, setTracks] = useState<Track[]>(() => loadFromStorage(STORAGE_KEYS.tracks, []));
   const [playlists, setPlaylists] = useState<Playlist[]>(() => loadFromStorage(STORAGE_KEYS.playlists, []));
@@ -1049,15 +1062,13 @@ function App() {
               }
             }
             
-            const trackCovers = subTracks.filter(t => t.cover && t.cover.startsWith('data:')).slice(0, 4).map(t => t.cover!);
             const generatedCover = generatePlaylistCover(subTracks);
             playlists.push({ 
               id: playlistId++, 
               name, 
               path: fullPath, 
               track_count: trackCount,
-              cover: generatedCover || undefined,
-              trackCovers
+              cover: generatedCover || undefined
             });
           } catch { 
             playlists.push({ id: playlistId++, name, path: fullPath, track_count: 0 }); 
@@ -1295,15 +1306,12 @@ function App() {
         }
       }
       
-      const tracksWithCover = newTracks.filter(t => t.cover && t.cover.startsWith('data:'));
-      const trackCovers = tracksWithCover.slice(0, 4).map(t => t.cover!);
       const generatedCover = generatePlaylistCover(newTracks);
       
       const updatedPlaylist = { 
         ...playlist, 
         cover: generatedCover || playlist.cover, 
-        track_count: newTracks.length,
-        trackCovers: trackCovers
+        track_count: newTracks.length
       };
       
       setPlaylists(prev => {
@@ -1545,15 +1553,15 @@ function App() {
                     className="w-full flex items-center gap-3 py-2 pl-2 md:pl-4 rounded-md hover:bg-white/5 transition-all group"
                   >
                     <div className="w-10 h-10 shrink-0 rounded-md overflow-hidden bg-surface-container-high flex items-center justify-center">
-                      {playlist.trackCovers && playlist.trackCovers.length > 0 ? (
+                      {(() => { const covers = getPlaylistCovers(playlist.path, tracks); return covers.length > 0 ? (
                         <div className="w-full h-full grid grid-cols-2 grid-rows-2">
-                          {playlist.trackCovers.slice(0, 4).map((cover, i) => (
+                          {covers.slice(0, 4).map((cover, i) => (
                             <img key={i} src={cover} alt="" className="w-full h-full object-cover" />
                           ))}
                         </div>
                       ) : (
                         <PlaylistIcon className="w-5 h-5 text-outline" />
-                      )}
+                      ); })()}
                     </div>
                     <div className="flex-1 text-left min-w-0">
                       <div className="text-xs md:text-sm text-on-surface truncate group-hover:text-primary transition-colors">{playlist.name}</div>
@@ -1582,9 +1590,9 @@ function App() {
                     onClick={() => handleSelectPlaylist(playlist)}
                     className="aspect-square rounded-md overflow-hidden bg-surface-container-high group hover:ring-2 hover:ring-primary/50 transition-all"
                   >
-                    {playlist.trackCovers && playlist.trackCovers.length > 0 ? (
+                    {(() => { const covers = getPlaylistCovers(playlist.path, tracks); return covers.length > 0 ? (
                       <div className="w-full h-full grid grid-cols-2 grid-rows-2">
-                        {playlist.trackCovers.slice(0, 4).map((cover, i) => (
+                        {covers.slice(0, 4).map((cover, i) => (
                           <img key={i} src={cover} alt="" className="w-full h-full object-cover" />
                         ))}
                       </div>
@@ -1592,7 +1600,7 @@ function App() {
                       <div className="w-full h-full flex items-center justify-center">
                         <PlaylistIcon className="w-8 h-8 text-outline" />
                       </div>
-                    )}
+                    ); })()}
                   </button>
                 ))}
               </div>
@@ -1600,7 +1608,7 @@ function App() {
           </div>
         </aside>
 
-        <main className="flex-1 relative h-[calc(100vh-3.5rem)] overflow-y-auto pb-20 md:pb-24 p-3 md:p-8 border-t border-white/[0.03]" style={{ marginLeft: sidebarWidth }}>
+        <main className="flex-1 relative h-[calc(100vh-3.5rem)] overflow-y-auto pb-20 md:pb-24 p-3 md:p-8 border-t border-white/[0.03]" style={{ marginLeft: sidebarWidth, marginRight: rightSidebarWidth }}>
           <div className="fixed inset-0 pointer-events-none z-[-1] opacity-40 mix-blend-overlay" style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg viewBox=\'0 0 200 200\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cfilter id=\'noiseFilter\'%3E%3CfeTurbulence type=\'fractalNoise\' baseFrequency=\'0.85\' numOctaves=\'3\' stitchTiles=\'stitch\'/%3E%3C/filter%3E%3Crect width=\'100%25\' height=\'100%25\' filter=\'url(%23noiseFilter)\'/%3E%3C/svg%3E")'}}></div>
           <div className="fixed inset-0 bg-gradient-to-br from-primary/5 via-transparent to-secondary-container/5 pointer-events-none z-[-1]"></div>
           <div className="absolute top-0 right-0 w-[600px] h-[600px] bg-primary/5 rounded-full blur-[150px] pointer-events-none z-[-1]"></div>
@@ -1654,9 +1662,91 @@ function App() {
             )}
           </div>
         </main>
+        
+        <aside 
+          className="fixed right-0 top-[56px] h-[calc(100vh-56px-6rem)] bg-surface-container-lowest/95 border-l border-white/[0.03] flex flex-col z-40 shadow-[-10px_0_30px_-5px_rgba(0,0,0,0.8)]"
+          style={{ width: rightSidebarWidth }}
+        >
+          <div 
+            className="absolute left-0 top-0 w-1 h-full cursor-ew-resize hover:bg-primary/50"
+            onMouseDown={(e) => {
+              e.preventDefault();
+              const startX = e.clientX;
+              const startWidth = rightSidebarWidth;
+              const onMouseMove = (moveEvent: MouseEvent) => {
+                const newWidth = Math.max(200, Math.min(500, startWidth - (moveEvent.clientX - startX)));
+                setRightSidebarWidth(newWidth);
+              };
+              const onMouseUp = () => {
+                document.removeEventListener('mousemove', onMouseMove);
+                document.removeEventListener('mouseup', onMouseUp);
+              };
+              document.addEventListener('mousemove', onMouseMove);
+              document.addEventListener('mouseup', onMouseUp);
+            }}
+          />
+          <div className="p-4 flex flex-col h-full overflow-hidden">
+            <div className="flex items-center justify-between mb-4">
+              <span className="text-[11px] uppercase tracking-widest text-outline">Now Playing</span>
+            </div>
+              
+            {currentTrack ? (
+              <div className="flex flex-col h-full overflow-hidden">
+                <div className="text-center mb-3">
+                  <div className="text-sm text-outline font-medium">{currentTrack.artist}</div>
+                </div>
+                
+                <div className="w-full aspect-square rounded-xl overflow-hidden shadow-[0_8px_30px_rgba(0,0,0,0.5)] mb-4 bg-surface-container shrink-0">
+                  {currentTrack.cover ? (
+                    <img src={currentTrack.cover} alt="" className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="w-full h-full bg-gradient-to-br from-primary/20 to-secondary-container/30 flex items-center justify-center">
+                      <Music className="w-1/2 h-1/2 text-white/20" />
+                    </div>
+                  )}
+                </div>
+                
+                <div className="text-center mb-3 shrink-0">
+                  <div className="text-base font-semibold text-on-surface mb-1 truncate px-2">{currentTrack.title}</div>
+                  <div className="text-sm text-outline">{currentTrack.artist}</div>
+                </div>
+                
+                <div className="flex-1 overflow-y-auto space-y-2 text-xs text-outline">
+                  {currentTrack.album && currentTrack.album !== 'Unknown Album' && (
+                    <div className="flex justify-between py-1.5 border-b border-white/[0.05]">
+                      <span>Album</span>
+                      <span className="text-on-surface truncate ml-4 text-right max-w-[120px]">{currentTrack.album}</span>
+                    </div>
+                  )}
+                  {currentTrack.duration > 0 && (
+                    <div className="flex justify-between py-1.5 border-b border-white/[0.05]">
+                      <span>Duration</span>
+                      <span className="text-on-surface">{formatDuration(currentTrack.duration)}</span>
+                    </div>
+                  )}
+                  {currentTrack.path && (
+                    <div className="flex justify-between py-1.5 border-b border-white/[0.05]">
+                      <span>Path</span>
+                      <span className="text-on-surface truncate ml-4 text-right max-w-[120px]">{currentTrack.path.split('\\').pop()}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between py-1.5 border-b border-white/[0.05]">
+                    <span>Format</span>
+                    <span className="text-on-surface">{currentTrack.path?.split('.').pop()?.toUpperCase() || 'Unknown'}</span>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="flex-1 flex flex-col items-center justify-center text-outline">
+                <Music className="w-12 h-12 mb-3 opacity-30" />
+                <div className="text-sm">No track playing</div>
+              </div>
+            )}
+          </div>
+        </aside>
       </div>
 
-      <footer className="fixed bottom-0 w-full z-50 border-t border-surface-container-high/30 bg-surface-container-lowest/80 backdrop-blur-xl shadow-[0_-10px_20px_rgba(0,0,0,0.5)] h-16 md:h-24 px-3 md:px-12 flex items-center justify-between text-xs uppercase tracking-widest text-white/60">
+      <footer className="fixed bottom-0 w-full z-50 border-t border-surface-container-high/30 bg-surface-container-lowest/80 backdrop-blur-xl shadow-[0_-10px_20px_rgba(0,0,0,0.5)] h-16 md:h-24 px-3 md:px-12 flex items-center justify-between text-xs uppercase tracking-widest text-white/60" style={{ marginRight: rightSidebarWidth }}>
         <div className="flex items-center gap-2 md:gap-4 w-1/3 min-w-0">
           <div className="relative group hidden md:block">
             {currentTrack?.cover ? <img src={currentTrack.cover} alt="" className="w-12 h-12 md:w-16 md:h-16 rounded-xl object-cover shrink-0 shadow-[0_0_15px_rgba(247,189,72,0.2)] cursor-pointer" onClick={() => setShowOverlay(true)} /> : <div className="w-12 h-12 md:w-16 md:h-16 rounded-xl bg-gradient-to-br from-primary/10 to-secondary-container/20 border border-white/[0.05] shrink-0 cursor-pointer" onClick={() => setShowOverlay(true)}></div>}
