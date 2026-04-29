@@ -5,7 +5,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { 
-  Flame as Activity, Music, ListMusic as PlaylistIcon, Settings, 
+  Activity, Music, ListMusic as PlaylistIcon, Settings, 
   Play, Pause, SkipBack, SkipForward, Shuffle, Repeat,
   Heart, Mic, ListMusic, Volume2, VolumeX,
   ChevronLeft, ChevronRight, Search, Minus, Square, X,
@@ -155,7 +155,7 @@ function SettingsPage({ libraryPath, setLibraryPath, onSave, gaplessEnabled, set
                 <div className="flex items-center justify-between">
                   <div>
                     <div className="text-on-surface">Launch on startup</div>
-                    <div className="text-outline text-sm">Automatically start Ember when you log in</div>
+                    <div className="text-outline text-sm">v0.1.0</div>
                   </div>
                   <button 
                     onClick={() => { setStartupEnabled(!startupEnabled); saveToStorage("startupEnabled", !startupEnabled); }}
@@ -257,10 +257,10 @@ function SettingsPage({ libraryPath, setLibraryPath, onSave, gaplessEnabled, set
             <div className="glass-panel rounded-xl p-6 space-y-4">
               <div className="flex items-center gap-4 mb-6">
                 <div className="w-16 h-16 rounded-full bg-gradient-to-r from-primary to-tertiary-container flex items-center justify-center">
-                  <Activity className="w-8 h-8 text-bg" />
+                  <Music className="w-8 h-8 text-bg" />
                 </div>
                 <div>
-                  <h3 className="text-xl font-bold text-white">Ember Music Player</h3>
+                  <h3 className="text-xl font-bold text-white">Music Player</h3>
                   <p className="text-outline">Electric Premium</p>
                 </div>
               </div>
@@ -273,7 +273,7 @@ function SettingsPage({ libraryPath, setLibraryPath, onSave, gaplessEnabled, set
           )}
           
           <div className="text-center pt-4">
-            <span className="text-outline text-sm">Ember v0.1.0 • Flame Edition</span>
+            <span className="text-outline text-sm">v0.1.0</span>
           </div>
         </div>
       </div>
@@ -1179,13 +1179,13 @@ useEffect(() => { if (libraryPath) { loadLibrary(); setTimeout(() => setIsLoadin
       <div className="fixed inset-0 bg-bg flex flex-col items-center justify-center z-[100]">
         <div className="relative mb-8">
           <div className="w-24 h-24 rounded-full bg-gradient-to-r from-primary to-tertiary-container flex items-center justify-center animate-pulse">
-            <Activity className="w-12 h-12 text-bg" />
+            <Music className="w-12 h-12 text-bg" />
           </div>
           <div className="absolute -bottom-4 left-1/2 -translate-x-1/2 w-32 h-1 bg-white/10 rounded-full overflow-hidden">
             <div className="h-full bg-gradient-to-r from-primary to-tertiary-container animate-[loading_1.5s_ease-in-out_infinite]"></div>
           </div>
         </div>
-        <h1 className="text-3xl font-bold text-white tracking-tight mb-2">Ember</h1>
+        <h1 className="text-3xl font-bold text-white tracking-tight mb-2">Player</h1>
         <p className="text-primary text-sm uppercase tracking-widest">Loading...</p>
         <style>{`
           @keyframes loading {
@@ -1238,11 +1238,8 @@ useEffect(() => { if (libraryPath) { loadLibrary(); setTimeout(() => setIsLoadin
           <div className="px-2 md:px-6 mb-6 flex flex-col md:flex-row items-center gap-2 md:gap-4">
             <div className="w-10 h-10 md:w-14 md:h-14 rounded-full overflow-hidden border border-primary/30 shadow-[0_0_15px_rgba(247,189,72,0.3)]">
               <div className="w-full h-full bg-gradient-to-br from-primary/20 to-secondary-container/20 flex items-center justify-center">
-                <Activity className="w-5 h-5 md:w-7 md:h-7 text-primary" />
+                <Music className="w-5 h-5 md:w-7 md:h-7 text-primary" />
               </div>
-            </div>
-            <div className="hidden md:block text-center">
-              <h1 className="text-primary font-bold tracking-widest text-lg">EMBER</h1>
             </div>
           </div>
 

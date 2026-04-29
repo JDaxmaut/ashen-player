@@ -3,23 +3,8 @@ use lofty::file::{AudioFile, TaggedFileExt};
 use lofty::probe::Probe;
 use lofty::tag::Accessor;
 use serde::{Deserialize, Serialize};
-use std::fs;
 use std::path::Path;
 use std::process::Command;
-use std::sync::Mutex;
-use once_cell::sync::Lazy;
-
-struct RPCState {
-    enabled: bool,
-    client_id: String,
-}
-
-static RPC_STATE: Lazy<Mutex<RPCState>> = Lazy::new(|| {
-    Mutex::new(RPCState {
-        enabled: false,
-        client_id: String::new(),
-    })
-});
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AudioMetadata {
@@ -110,57 +95,6 @@ fn get_audio_cover(path: String) -> Option<String> {
 }
 
 #[tauri::command]
-fn save_audio_cover(path: String) -> Option<String> {
-    eprintln!("[SAVE_COVER] Saving cover for: {}", path);
-    
-    let audio_path = Path::new(&path);
-    if !audio_path.exists() {
-        eprintln!("[SAVE_COVER] File not found: {}", path);
-        return None;
-    }
-    
-    let tagged_file = Probe::open(&path).ok()?.read().ok()?;
-    let tag = tagged_file.primary_tag().or_else(|| tagged_file.first_tag())?;
-    let picture = tag.pictures().get(0)?;
-    let ext = match picture.mime_type() {
-        Some(m) => {
-            let s = m.as_str();
-            if s.contains("png") { "png" } else { "jpg" }
-        }
-        None => "jpg"
-    };
-    
-    let parent = audio_path.parent()?;
-    let filename = format!("folder.{}", ext);
-    let cover_path = parent.join(&filename);
-    
-    fs::write(&cover_path, picture.data()).ok()?;
-    eprintln!("[SAVE_COVER] Saved to: {:?}", cover_path);
-    
-    Some(cover_path.to_string_lossy().to_string())
-}
-
-#[tauri::command]
-fn get_folder_cover(path: String) -> Option<String> {
-    eprintln!("[FOLDER_COVER] Checking: {}", path);
-    
-    let audio_path = Path::new(&path);
-    let parent = audio_path.parent()?;
-    
-    for ext in &["jpg", "jpeg", "png", "gif"] {
-        let cover_path = parent.join(format!("folder.{}", ext));
-        if cover_path.exists() {
-            let data = fs::read(&cover_path).ok()?;
-            let base64_img = general_purpose::STANDARD.encode(&data);
-            let mime = if ext == &"png" { "image/png" } else { "image/jpeg" };
-            return Some(format!("data:{};base64,{}", mime, base64_img));
-        }
-    }
-    
-    None
-}
-
-#[tauri::command]
 fn get_track_loudness(path: String) -> Option<AudioLoudness> {
     eprintln!("[LOUDNESS] Analyzing: {}", path);
     
@@ -235,65 +169,13 @@ fn get_track_loudness(path: String) -> Option<AudioLoudness> {
     })
 }
 
-#[tauri::command]
-fn init_discord_rpc(client_id: String) -> bool {
-    eprintln!("[RPC] Initialized with client_id: {}", client_id);
-    if let Ok(mut state) = RPC_STATE.lock() {
-        state.enabled = true;
-        state.client_id = client_id;
-        true
-    } else {
-        false
-    }
-}
-
-#[tauri::command]
-fn update_discord_rpc(title: String, artist: String, album: String, elapsed_ms: u64, duration_ms: u64) {
-    if let Ok(state) = RPC_STATE.lock() {
-        if !state.enabled {
-            return;
-        }
-        eprintln!("[RPC] Playing: {} - {} ({}/{}ms)", artist, title, elapsed_ms, duration_ms);
-    }
-}
-
-#[tauri::command]
-fn pause_discord_rpc() {
-    if let Ok(state) = RPC_STATE.lock() {
-        if !state.enabled {
-            return;
-        }
-        eprintln!("[RPC] Paused");
-    }
-}
-
-#[tauri::command]
-fn resume_discord_rpc(elapsed_ms: u64, duration_ms: u64) {
-    if let Ok(state) = RPC_STATE.lock() {
-        if !state.enabled {
-            return;
-        }
-        eprintln!("[RPC] Resumed ({}/{}ms)", elapsed_ms, duration_ms);
-    }
-}
-
-#[tauri::command]
-fn clear_discord_rpc() {
-    if let Ok(state) = RPC_STATE.lock() {
-        if !state.enabled {
-            return;
-        }
-        eprintln!("[RPC] Cleared");
-    }
-}
-
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
-        .invoke_handler(tauri::generate_handler![get_music_folder, get_audio_cover, get_audio_metadata, get_track_loudness, save_audio_cover, get_folder_cover, init_discord_rpc, update_discord_rpc, pause_discord_rpc, resume_discord_rpc, clear_discord_rpc])
+        .invoke_handler(tauri::generate_handler![get_music_folder, get_audio_cover, get_audio_metadata, get_track_loudness])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

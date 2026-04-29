@@ -39,6 +39,7 @@ dependencies = [
  "base64 0.22.1",
  "dirs 5.0.1",
  "lofty",
+ "once_cell",
  "serde",
  "serde_json",
  "tauri",
