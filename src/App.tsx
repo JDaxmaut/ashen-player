@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
-import { readDir } from "@tauri-apps/plugin-fs";
+import { readDir, readFile } from "@tauri-apps/plugin-fs";
 import { invoke } from "@tauri-apps/api/core";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -83,23 +83,17 @@ function darkenColor(color: string, amount: number): string {
   return color;
 }
 
-function getPlaylistCovers(playlistPath: string, allTracks: Track[]): string[] {
-  const folderPath = playlistPath.substring(0, playlistPath.lastIndexOf('\\'));
-  const playlistTracks = allTracks.filter(t => {
-    const trackFolder = t.path.substring(0, t.path.lastIndexOf('\\'));
-    return trackFolder === folderPath;
-  });
-  return playlistTracks
-    .filter(t => t.cover && t.cover.startsWith('data:'))
-    .slice(0, 4)
-    .map(t => t.cover!);
-}
-
 const MUSIC_EXTENSIONS = ['.mp3', '.flac', '.wav', '.m4a', '.ogg', '.aac', '.wma', '.aiff'];
+const COVER_EXTENSIONS = ['cover.jpg', 'folder.jpg', 'album.jpg', 'front.jpg', 'cover.png', 'folder.png', 'album.png', 'front.png', 'cover.jpeg', 'folder.jpeg', 'album.jpeg', 'front.jpeg'];
 
 const isMusicFile = (filename: string): boolean => {
   const ext = filename.toLowerCase();
   return MUSIC_EXTENSIONS.some(e => ext.endsWith(e));
+};
+
+const isImageFile = (filename: string): boolean => {
+  const name = filename.toLowerCase();
+  return COVER_EXTENSIONS.some(e => name === e) || name.match(/^(cover|folder|album|front)\.(jpg|jpeg|png)$/i) !== null;
 };
 
 export interface Track {
@@ -119,6 +113,7 @@ export interface Playlist {
   track_count: number;
   cover?: string;
   trackCovers?: string[];
+  customCover?: string;
 }
 
 interface Favorite {
@@ -418,6 +413,7 @@ function LibraryPage({
   onSortBy,
   allPlaylists,
   onSelectPlaylist,
+  playlistCovers,
 }: { 
   tracks: Track[];
   currentTrack: Track | null;
@@ -434,6 +430,7 @@ function LibraryPage({
   onSortBy: (sort: "title" | "artist" | "album" | "duration") => void;
   allPlaylists?: Playlist[];
   onSelectPlaylist?: (playlist: Playlist) => void;
+  playlistCovers?: Record<string, string[]>;
 }) {
   const [bgColor, setBgColor] = useState<string>('rgba(26, 26, 26, 1)');
   
@@ -481,17 +478,13 @@ if (!playlistName && allPlaylists && allPlaylists.length > 0) {
                   className="group text-left p-4 rounded-xl bg-surface-container hover:bg-surface-container-high transition-colors"
                 >
                   <div className="aspect-square rounded-lg overflow-hidden bg-surface-container-high mb-3 shadow-lg group-hover:scale-[1.02] transition-transform">
-                    {(() => { const covers = getPlaylistCovers(playlist.path, tracks); return covers.length > 0 ? (
-                      <div className="w-full h-full grid grid-cols-2 grid-rows-2">
-                        {covers.slice(0, 4).map((cover, i) => (
-                          <img key={i} src={cover} alt="" className="w-full h-full object-cover" />
-                        ))}
-                      </div>
+                    {playlistCovers?.[playlist.path]?.[0] ? (
+                      <img src={playlistCovers[playlist.path][0]} alt="" className="w-full h-full object-cover" />
                     ) : (
                       <div className="w-full h-full bg-gradient-to-br from-surface-container-high to-surface flex items-center justify-center">
                         <PlaylistIcon className="w-10 h-10 text-white/30" />
                       </div>
-                    ); })()}
+                    )}
                   </div>
                   <div className="text-sm text-on-surface truncate group-hover:text-primary transition-colors font-medium">{playlist.name}</div>
                   <div className="text-xs text-outline truncate">{playlist.track_count} tracks</div>
@@ -513,17 +506,13 @@ if (!playlistName && allPlaylists && allPlaylists.length > 0) {
                 className="group text-left"
               >
                 <div className="aspect-square rounded-lg overflow-hidden bg-surface-container-high mb-3 shadow-lg group-hover:scale-[1.02] transition-transform">
-                  {(() => { const covers = getPlaylistCovers(playlist.path, tracks); return covers.length > 0 ? (
-                    <div className="w-full h-full grid grid-cols-2 grid-rows-2">
-                      {covers.slice(0, 4).map((cover, i) => (
-                        <img key={i} src={cover} alt="" className="w-full h-full object-cover" />
-                      ))}
-                    </div>
+                  {playlistCovers?.[playlist.path]?.[0] ? (
+                    <img src={playlistCovers[playlist.path][0]} alt="" className="w-full h-full object-cover" />
                   ) : (
                     <div className="w-full h-full bg-gradient-to-br from-surface-container-high to-surface flex items-center justify-center">
                       <PlaylistIcon className="w-16 h-16 text-white/30" />
                     </div>
-                  ); })()}
+                  )}
                 </div>
                 <div className="text-sm font-medium text-on-surface truncate group-hover:text-primary transition-colors">{playlist.name}</div>
                 <div className="text-xs text-outline truncate">{playlist.track_count} tracks</div>
@@ -547,7 +536,7 @@ if (!playlistName && allPlaylists && allPlaylists.length > 0) {
         
         <section className="relative z-10 flex gap-8 items-end">
           <div 
-            className="w-52 h-52 md:w-60 md:h-60 shrink-0 rounded-lg overflow-hidden shadow-[0_20px_60px_-15px_rgba(0,0,0,0.8)] group cursor-pointer"
+            className="w-52 h-52 md:w-60 md:h-60 shrink-0 rounded-lg overflow-hidden shadow-[0_20px_60px_-15px_rgba(0,0,0,0.8)] group cursor-pointer relative"
             onClick={onPlayAll}
           >
             {playlistCover?.startsWith('data:') ? (
@@ -892,9 +881,104 @@ function App() {
   const [titlebarHeight, setTitlebarHeight] = useState(56);
   const [sidebarWidth, setSidebarWidth] = useState(280);
   const [rightSidebarWidth, setRightSidebarWidth] = useState(300);
+  const [playlistCovers, setPlaylistCovers] = useState<Record<string, string[]>>(() => loadFromStorage("alora_playlistCovers", {}));
+  const [rightSidebarBg, setRightSidebarBg] = useState<string>('rgba(14, 14, 14, 1)');
+  
+  useEffect(() => {
+    saveToStorage("alora_playlistCovers", playlistCovers);
+  }, [playlistCovers]);
   
   const [tracks, setTracks] = useState<Track[]>(() => loadFromStorage(STORAGE_KEYS.tracks, []));
   const [playlists, setPlaylists] = useState<Playlist[]>(() => loadFromStorage(STORAGE_KEYS.playlists, []));
+  
+useEffect(() => {
+    const loadCovers = async () => {
+      for (const playlist of playlists) {
+        if (playlist.customCover) {
+          setPlaylistCovers(prev => ({ ...prev, [playlist.path]: [playlist.customCover!] }));
+          continue;
+        }
+        
+        try {
+          const entries = await readDir(playlist.path);
+          let folderCover: string | undefined;
+          for (const entry of entries) {
+            if (!folderCover && isImageFile(entry.name)) {
+              try {
+                const imagePath = playlist.path + (playlist.path.endsWith('\\') ? '' : '\\') + entry.name;
+                const imageData = await readFile(imagePath);
+                let binary = '';
+                const bytes = new Uint8Array(imageData);
+                for (let i = 0; i < bytes.byteLength; i++) {
+                  binary += String.fromCharCode(bytes[i]);
+                }
+                const base64 = btoa(binary);
+                const ext = entry.name.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg';
+                folderCover = `data:${ext};base64,${base64}`;
+              } catch {}
+            }
+          }
+          if (folderCover) {
+            setPlaylistCovers(prev => ({ ...prev, [playlist.path]: [folderCover] }));
+            setPlaylists(prev => {
+              const updated = prev.map(p => p.path === playlist.path ? { ...p, customCover: folderCover } : p);
+              saveToStorage(STORAGE_KEYS.playlists, updated);
+              return updated;
+            });
+            continue;
+          }
+        } catch {}
+        
+        const folderPath = playlist.path.substring(0, playlist.path.lastIndexOf('\\'));
+        const playlistTracks = tracks.filter(t => {
+          const trackFolder = t.path.substring(0, t.path.lastIndexOf('\\'));
+          return trackFolder === folderPath;
+        });
+        
+        const existingCovers = playlistTracks
+          .filter(t => t.cover && t.cover.startsWith('data:'))
+          .slice(0, 4)
+          .map(t => t.cover!);
+        
+        if (existingCovers.length > 0) {
+          setPlaylistCovers(prev => ({ ...prev, [playlist.path]: existingCovers }));
+          continue;
+        }
+        
+        const tracksToLoad = playlistTracks.slice(0, 4);
+        const loadedCovers: string[] = [];
+        
+        for (const track of tracksToLoad) {
+          if (!track.cover || track.artist === 'Unknown Artist') {
+            try {
+              const meta = await invoke<{ title: string; artist: string; album: string; duration: number; cover: string | null } | null>("get_audio_metadata", { path: track.path });
+              if (meta) {
+                setTracks(prev => prev.map(t => t.path === track.path ? { ...t, title: meta.title || t.title, artist: meta.artist || t.artist, album: meta.album || t.album, duration: meta.duration || t.duration, cover: meta.cover || t.cover } : t));
+                if (meta.cover) {
+                  loadedCovers.push(meta.cover);
+                  setPlaylistCovers(prev => ({ ...prev, [playlist.path]: [...(prev[playlist.path] || []), meta.cover!] }));
+                  if (loadedCovers.length >= 4) break;
+                }
+              }
+            } catch {}
+          }
+        }
+        
+        if (loadedCovers.length === 0) {
+          const updatedCovers = playlistTracks
+            .filter(t => t.cover && t.cover.startsWith('data:'))
+            .slice(0, 4)
+            .map(t => t.cover!);
+          if (updatedCovers.length > 0) {
+            setPlaylistCovers(prev => ({ ...prev, [playlist.path]: updatedCovers }));
+          }
+        }
+      }
+    };
+    if (playlists.length > 0 && tracks.length > 0) {
+      loadCovers();
+    }
+  }, [playlists.length, tracks.length]);
   const [currentTrack, setCurrentTrack] = useState<Track | null>(null);
   const [libraryPath, setLibraryPath] = useState(() => loadFromStorage(STORAGE_KEYS.libraryPath, "C:\\Music"));
   const [volume, setVolume] = useState(() => loadFromStorage(STORAGE_KEYS.volume, 5));
@@ -943,6 +1027,16 @@ function App() {
   useEffect(() => {
     if (audioRef.current) audioRef.current.volume = volume / 100;
   }, [volume]);
+
+  useEffect(() => {
+    if (currentTrack?.cover) {
+      getAverageColor(currentTrack.cover).then(color => {
+        setRightSidebarBg(color);
+      });
+    } else {
+      setRightSidebarBg('rgba(14, 14, 14, 1)');
+    }
+  }, [currentTrack?.cover]);
   const nextTrackFnRef = useRef<(() => void) | null>(null);
   const prevTrackFnRef = useRef<(() => void) | null>(null);
 
@@ -1024,6 +1118,24 @@ function App() {
             const subEntries = await readDir(fullPath);
             const trackCount = subEntries.filter(e => isMusicFile(e.name)).length;
             
+            let folderCover: string | undefined;
+            for (const subEntry of subEntries) {
+              if (!folderCover && isImageFile(subEntry.name)) {
+                try {
+                  const imagePath = fullPath + (fullPath.endsWith('\\') ? '' : '\\') + subEntry.name;
+                  const imageData = await readFile(imagePath);
+                  let binary = '';
+                  const bytes = new Uint8Array(imageData);
+                  for (let i = 0; i < bytes.byteLength; i++) {
+                    binary += String.fromCharCode(bytes[i]);
+                  }
+                  const base64 = btoa(binary);
+                  const ext = subEntry.name.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg';
+                  folderCover = `data:${ext};base64,${base64}`;
+                } catch {}
+              }
+            }
+            
             const subTracks: Track[] = [];
             let subTrackId = Date.now();
             for (const subEntry of subEntries) {
@@ -1068,7 +1180,8 @@ function App() {
               name, 
               path: fullPath, 
               track_count: trackCount,
-              cover: generatedCover || undefined
+              cover: generatedCover || undefined,
+              customCover: folderCover
             });
           } catch { 
             playlists.push({ id: playlistId++, name, path: fullPath, track_count: 0 }); 
@@ -1294,7 +1407,26 @@ function App() {
       const newTracks: Track[] = [];
       let trackId = Date.now();
       
+      let folderCover: string | undefined;
+      
       for (const entry of entries) {
+        if (!folderCover && isImageFile(entry.name)) {
+          try {
+            const imagePath = playlist.path + (playlist.path.endsWith('\\') ? '' : '\\') + entry.name;
+            const imageData = await readFile(imagePath);
+            let binary = '';
+            const bytes = new Uint8Array(imageData);
+            for (let i = 0; i < bytes.byteLength; i++) {
+              binary += String.fromCharCode(bytes[i]);
+            }
+            const base64 = btoa(binary);
+            const ext = entry.name.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg';
+            folderCover = `data:${ext};base64,${base64}`;
+          } catch (e) {
+            console.error("Failed to load cover:", e);
+          }
+        }
+        
         if (isMusicFile(entry.name)) {
           const fullPath = playlist.path + (playlist.path.endsWith('\\') ? '' : '\\') + entry.name;
           const existing = existingTracks.get(fullPath);
@@ -1311,7 +1443,8 @@ function App() {
       const updatedPlaylist = { 
         ...playlist, 
         cover: generatedCover || playlist.cover, 
-        track_count: newTracks.length
+        track_count: newTracks.length,
+        customCover: folderCover || playlist.customCover
       };
       
       setPlaylists(prev => {
@@ -1553,15 +1686,11 @@ function App() {
                     className="w-full flex items-center gap-3 py-2 pl-2 md:pl-4 rounded-md hover:bg-white/5 transition-all group"
                   >
                     <div className="w-10 h-10 shrink-0 rounded-md overflow-hidden bg-surface-container-high flex items-center justify-center">
-                      {(() => { const covers = getPlaylistCovers(playlist.path, tracks); return covers.length > 0 ? (
-                        <div className="w-full h-full grid grid-cols-2 grid-rows-2">
-                          {covers.slice(0, 4).map((cover, i) => (
-                            <img key={i} src={cover} alt="" className="w-full h-full object-cover" />
-                          ))}
-                        </div>
+                      {playlistCovers?.[playlist.path]?.[0] ? (
+                        <img src={playlistCovers[playlist.path][0]} alt="" className="w-full h-full object-cover" />
                       ) : (
                         <PlaylistIcon className="w-5 h-5 text-outline" />
-                      ); })()}
+                      )}
                     </div>
                     <div className="flex-1 text-left min-w-0">
                       <div className="text-xs md:text-sm text-on-surface truncate group-hover:text-primary transition-colors">{playlist.name}</div>
@@ -1590,17 +1719,13 @@ function App() {
                     onClick={() => handleSelectPlaylist(playlist)}
                     className="aspect-square rounded-md overflow-hidden bg-surface-container-high group hover:ring-2 hover:ring-primary/50 transition-all"
                   >
-                    {(() => { const covers = getPlaylistCovers(playlist.path, tracks); return covers.length > 0 ? (
-                      <div className="w-full h-full grid grid-cols-2 grid-rows-2">
-                        {covers.slice(0, 4).map((cover, i) => (
-                          <img key={i} src={cover} alt="" className="w-full h-full object-cover" />
-                        ))}
-                      </div>
+                    {playlistCovers?.[playlist.path]?.[0] ? (
+                      <img src={playlistCovers[playlist.path][0]} alt="" className="w-full h-full object-cover" />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center">
                         <PlaylistIcon className="w-8 h-8 text-outline" />
                       </div>
-                    ); })()}
+                    )}
                   </button>
                 ))}
               </div>
@@ -1627,11 +1752,12 @@ function App() {
                 onToggleFavorite={toggleFavorite}
                 history={history}
                 playlistName={currentPlaylist?.name}
-                playlistCover={currentPlaylist?.cover}
+                playlistCover={currentPlaylist?.customCover || currentPlaylist?.cover}
                 sortBy={sortBy}
                 onSortBy={setSortBy}
                 allPlaylists={playlists}
                 onSelectPlaylist={handleSelectPlaylist}
+                playlistCovers={playlistCovers}
               />
             )}
             {currentView === "playlists" && (
@@ -1663,10 +1789,11 @@ function App() {
           </div>
         </main>
         
-        <aside 
+<aside 
           className="fixed right-0 top-[56px] h-[calc(100vh-56px-6rem)] bg-surface-container-lowest/95 border-l border-white/[0.03] flex flex-col z-40 shadow-[-10px_0_30px_-5px_rgba(0,0,0,0.8)]"
-          style={{ width: rightSidebarWidth }}
+          style={{ width: rightSidebarWidth, backgroundColor: rightSidebarBg }}
         >
+          <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-surface-container-lowest/95 pointer-events-none" />
           <div 
             className="absolute left-0 top-0 w-1 h-full cursor-ew-resize hover:bg-primary/50"
             onMouseDown={(e) => {
@@ -1685,11 +1812,11 @@ function App() {
               document.addEventListener('mouseup', onMouseUp);
             }}
           />
-          <div className="p-4 flex flex-col h-full overflow-hidden">
+          <div className="p-4 flex flex-col h-full overflow-hidden relative z-10">
             <div className="flex items-center justify-between mb-4">
               <span className="text-[11px] uppercase tracking-widest text-outline">Now Playing</span>
             </div>
-              
+            
             {currentTrack ? (
               <div className="flex flex-col h-full overflow-hidden">
                 <div className="text-center mb-3">
@@ -1698,7 +1825,23 @@ function App() {
                 
                 <div className="w-full aspect-square rounded-xl overflow-hidden shadow-[0_8px_30px_rgba(0,0,0,0.5)] mb-4 bg-surface-container shrink-0">
                   {currentTrack.cover ? (
-                    <img src={currentTrack.cover} alt="" className="w-full h-full object-cover" />
+                    <img 
+                      src={currentTrack.cover} 
+                      alt="" 
+                      className="w-full h-full object-cover"
+                      onLoad={(e) => {
+                        const img = e.currentTarget;
+                        const canvas = document.createElement('canvas');
+                        canvas.width = 1;
+                        canvas.height = 1;
+                        const ctx = canvas.getContext('2d');
+                        if (ctx) {
+                          ctx.drawImage(img, 0, 0, 1, 1);
+                          const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data;
+                          (img.parentElement?.parentElement as HTMLElement)?.style?.setProperty('--cover-color', `rgb(${r},${g},${b})`);
+                        }
+                      }}
+                    />
                   ) : (
                     <div className="w-full h-full bg-gradient-to-br from-primary/20 to-secondary-container/30 flex items-center justify-center">
                       <Music className="w-1/2 h-1/2 text-white/20" />
@@ -1711,28 +1854,28 @@ function App() {
                   <div className="text-sm text-outline">{currentTrack.artist}</div>
                 </div>
                 
-                <div className="flex-1 overflow-y-auto space-y-2 text-xs text-outline">
+                <div className="flex-1 overflow-y-auto text-[10px] text-outline space-y-1">
                   {currentTrack.album && currentTrack.album !== 'Unknown Album' && (
-                    <div className="flex justify-between py-1.5 border-b border-white/[0.05]">
-                      <span>Album</span>
-                      <span className="text-on-surface truncate ml-4 text-right max-w-[120px]">{currentTrack.album}</span>
+                    <div className="flex justify-between items-center py-1.5 border-b border-white/[0.05]">
+                      <span className="shrink-0">Album</span>
+                      <span className="text-on-surface truncate ml-2 text-right max-w-[140px] text-[9px]">{currentTrack.album}</span>
                     </div>
                   )}
                   {currentTrack.duration > 0 && (
-                    <div className="flex justify-between py-1.5 border-b border-white/[0.05]">
-                      <span>Duration</span>
-                      <span className="text-on-surface">{formatDuration(currentTrack.duration)}</span>
+                    <div className="flex justify-between items-center py-1.5 border-b border-white/[0.05]">
+                      <span className="shrink-0">Duration</span>
+                      <span className="text-on-surface text-[9px]">{formatDuration(currentTrack.duration)}</span>
                     </div>
                   )}
                   {currentTrack.path && (
-                    <div className="flex justify-between py-1.5 border-b border-white/[0.05]">
-                      <span>Path</span>
-                      <span className="text-on-surface truncate ml-4 text-right max-w-[120px]">{currentTrack.path.split('\\').pop()}</span>
+                    <div className="flex justify-between items-center py-1.5 border-b border-white/[0.05]">
+                      <span className="shrink-0">Path</span>
+                      <span className="text-on-surface truncate ml-2 text-right max-w-[140px] text-[8px]">{currentTrack.path.split('\\').pop()}</span>
                     </div>
                   )}
-                  <div className="flex justify-between py-1.5 border-b border-white/[0.05]">
-                    <span>Format</span>
-                    <span className="text-on-surface">{currentTrack.path?.split('.').pop()?.toUpperCase() || 'Unknown'}</span>
+                  <div className="flex justify-between items-center py-1.5 border-b border-white/[0.05]">
+                    <span className="shrink-0">Format</span>
+                    <span className="text-on-surface text-[9px]">{currentTrack.path?.split('.').pop()?.toUpperCase() || 'Unknown'}</span>
                   </div>
                 </div>
               </div>
@@ -1756,7 +1899,15 @@ function App() {
           </div>
           <div className="min-w-0 truncate">
             <div className="text-xs md:text-sm text-white font-medium truncate mb-0.5 md:mb-1">{currentTrack?.title || "No track"}</div>
-            <div className="text-[10px] md:text-[11px] text-outline truncate hover:underline cursor-pointer">{currentTrack?.artist || "Select a track"}</div>
+            {currentTrack?.artist && (
+              <button 
+                onClick={() => setSearchQuery(currentTrack.artist)}
+                className="text-[10px] md:text-[11px] text-outline truncate hover:text-primary hover:underline cursor-pointer transition-colors text-left"
+              >
+                {currentTrack.artist}
+              </button>
+            )}
+            {!currentTrack && <div className="text-[10px] md:text-[11px] text-outline">Select a track</div>}
           </div>
           {currentTrack && (
             <button onClick={() => toggleFavorite(currentTrack)} className="text-primary ml-2 hover:scale-110 transition-transform p-1">
