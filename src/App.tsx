@@ -5,13 +5,83 @@ import { invoke } from "@tauri-apps/api/core";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { 
-  Activity, Music, ListMusic as PlaylistIcon, Settings, 
+  Activity, Music, ListMusic as PlaylistIcon, Settings,
   Play, Pause, SkipBack, SkipForward, Shuffle, Repeat,
   Heart, Mic, ListMusic, Volume2, VolumeX,
   ChevronLeft, ChevronRight, Search, Minus, Square, X,
-  Home, Folder, Heart as HeartFilled, Plus, Trash2, Maximize2
+  Home, Folder, Heart as HeartFilled, Plus, Trash2, Maximize2, MoreHorizontal
 } from "lucide-react";
 import NowPlayingOverlay from "./NowPlayingOverlay";
+
+function generatePlaylistCover(tracks: Track[]): string | null {
+  const tracksWithCover = tracks.filter(t => t.cover && t.cover.startsWith('data:')).slice(0, 4);
+  if (tracksWithCover.length === 0) return null;
+  
+  const canvas = document.createElement('canvas');
+  const size = 200;
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return null;
+  
+  const cols = 2;
+  const rows = 2;
+  const cellW = size / cols;
+  const cellH = size / rows;
+  
+  ctx.fillStyle = '#1a1a1a';
+  ctx.fillRect(0, 0, size, size);
+  
+  tracksWithCover.forEach((track, i) => {
+    const img = new Image();
+    img.src = track.cover!;
+    const col = i % cols;
+    const row = Math.floor(i / cols);
+    ctx.drawImage(img, col * cellW, row * cellH, cellW, cellH);
+  });
+  
+  return canvas.toDataURL('image/jpeg', 0.7);
+}
+
+function getAverageColor(imageSrc: string): Promise<string> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = "Anonymous";
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      if (!ctx) { resolve('#1a1a1a'); return; }
+      canvas.width = 50;
+      canvas.height = 50;
+      ctx.drawImage(img, 0, 0, 50, 50);
+      const data = ctx.getImageData(0, 0, 50, 50).data;
+      let r = 0, g = 0, b = 0;
+      for (let i = 0; i < data.length; i += 4) {
+        r += data[i];
+        g += data[i + 1];
+        b += data[i + 2];
+      }
+      const count = data.length / 4;
+      r = Math.floor(r / count);
+      g = Math.floor(g / count);
+      b = Math.floor(b / count);
+      resolve(`rgb(${r}, ${g}, ${b})`);
+    };
+    img.onerror = () => resolve('#1a1a1a');
+    img.src = imageSrc;
+  });
+}
+
+function darkenColor(color: string, amount: number): string {
+  const match = color.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
+  if (match) {
+    const r = Math.floor(parseInt(match[1]) * (1 - amount));
+    const g = Math.floor(parseInt(match[2]) * (1 - amount));
+    const b = Math.floor(parseInt(match[3]) * (1 - amount));
+    return `rgb(${r}, ${g}, ${b})`;
+  }
+  return color;
+}
 
 const MUSIC_EXTENSIONS = ['.mp3', '.flac', '.wav', '.m4a', '.ogg', '.aac', '.wma', '.aiff'];
 
@@ -36,6 +106,7 @@ export interface Playlist {
   path: string;
   track_count: number;
   cover?: string;
+  trackCovers?: string[];
 }
 
 interface Favorite {
@@ -322,7 +393,7 @@ function PlaylistsPage({ playlists, onSelectPlaylist, onCreatePlaylist, onEditPl
 function LibraryPage({ 
   tracks, 
   currentTrack, 
-  isPlaying, 
+  isPlaying,
   onPlayTrack,
   onPlayAll,
   onShuffle,
@@ -333,6 +404,8 @@ function LibraryPage({
   playlistCover,
   sortBy,
   onSortBy,
+  allPlaylists,
+  onSelectPlaylist,
 }: { 
   tracks: Track[];
   currentTrack: Track | null;
@@ -347,7 +420,27 @@ function LibraryPage({
   playlistCover?: string;
   sortBy: "title" | "artist" | "album" | "duration";
   onSortBy: (sort: "title" | "artist" | "album" | "duration") => void;
+  allPlaylists?: Playlist[];
+  onSelectPlaylist?: (playlist: Playlist) => void;
 }) {
+  const [bgColor, setBgColor] = useState<string>('rgba(26, 26, 26, 1)');
+  
+  useEffect(() => {
+    const firstTrackWithCover = tracks.find(t => t.cover && t.cover.startsWith('data:'));
+    if (firstTrackWithCover?.cover) {
+      getAverageColor(firstTrackWithCover.cover).then(color => {
+        setBgColor(color);
+      });
+    } else {
+      setBgColor('rgba(26, 26, 26, 1)');
+    }
+  }, [tracks]);
+  
+  const totalDuration = tracks.reduce((acc, t) => acc + (t.duration || 0), 0);
+  const hours = Math.floor(totalDuration / 3600);
+  const minutes = Math.floor((totalDuration % 3600) / 60);
+  const durationText = hours > 0 ? `${hours} hr ${minutes} min` : `${minutes} min`;
+  
   const sortedTracks = [...tracks].sort((a, b) => {
     if (sortBy === "title") return a.title.localeCompare(b.title);
     if (sortBy === "artist") return a.artist.localeCompare(b.artist);
@@ -355,143 +448,204 @@ function LibraryPage({
     if (sortBy === "duration") return (a.duration || 0) - (b.duration || 0);
     return 0;
   });
-  return (
-    <div className="p-8 bg-gradient-to-br from-primary/10 via-surface-container/30 to-secondary-container/10 rounded-xl">
-      <section className="flex gap-8 mb-12">
-<div className={`w-[280px] shrink-0 group relative`}>
-          <div className={`aspect-square rounded-lg mb-4 flex items-center justify-center shadow-[0_20px_60px_-15px_rgba(247,189,72,0.4)] group-hover:scale-[1.02] transition-transform duration-300 overflow-hidden ring-1 ring-white/[0.05] ${playlistCover?.startsWith('data:') ? 'shadow-[0_20px_60px_-15px_rgba(247,189,72,0.3),0_0_40px_rgba(247,189,72,0.15)]' : 'bg-gradient-to-br from-primary/20 to-secondary-container/20'}`}>
-            {playlistCover?.startsWith('data:') ? (
-              <>
-                <img src={playlistCover} alt="" className="w-full h-full object-cover" />
-                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center backdrop-blur-sm">
-                  <button className="w-20 h-20 rounded-full bg-gradient-to-r from-primary to-tertiary-container flex items-center justify-center shadow-[0_0_30px_rgba(255,176,205,0.6)] transform translate-y-4 group-hover:translate-y-0 transition-all duration-300" onClick={onPlayAll}>
-                    <Play className="w-10 h-10 text-white ml-1" fill="white" />
-                  </button>
-                </div>
-              </>
-            ) : (
-              <>
-                <PlaylistIcon className="w-20 h-20 text-white/50" />
-                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center backdrop-blur-sm">
-                  <button className="w-20 h-20 rounded-full bg-gradient-to-r from-primary to-tertiary-container flex items-center justify-center shadow-[0_0_30px_rgba(255,176,205,0.6)] transform translate-y-4 group-hover:translate-y-0 transition-all duration-300" onClick={onPlayAll}>
-                    <Play className="w-10 h-10 text-white ml-1" fill="white" />
-                  </button>
-                </div>
-              </>
-            )}
+  
+if (!playlistName && allPlaylists && allPlaylists.length > 0) {
+    const recentPlaylistPaths = new Set(history.slice(0, 10).map(h => h.track.path.split('\\').slice(0, -1).join('\\')));
+    const recentPlaylists = allPlaylists.filter(p => recentPlaylistPaths.has(p.path));
+    const otherPlaylists = allPlaylists.filter(p => !recentPlaylistPaths.has(p.path));
+    
+    return (
+      <div className="p-8">
+        {recentPlaylists.length > 0 && (
+          <div className="mb-10">
+            <div className="flex items-center gap-2 mb-4">
+              <span className="text-[11px] text-stone-500 uppercase tracking-widest">Recently Played</span>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4">
+              {recentPlaylists.map((playlist) => (
+                <button 
+                  key={playlist.id}
+                  onClick={() => onSelectPlaylist?.(playlist)}
+                  className="group text-left p-4 rounded-xl bg-surface-container hover:bg-surface-container-high transition-colors"
+                >
+                  <div className="aspect-square rounded-lg overflow-hidden bg-surface-container-high mb-3 shadow-lg group-hover:scale-[1.02] transition-transform">
+                    {playlist.trackCovers && playlist.trackCovers.length > 0 ? (
+                      <div className="w-full h-full grid grid-cols-2 grid-rows-2">
+                        {playlist.trackCovers.slice(0, 4).map((cover, i) => (
+                          <img key={i} src={cover} alt="" className="w-full h-full object-cover" />
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="w-full h-full bg-gradient-to-br from-surface-container-high to-surface flex items-center justify-center">
+                        <PlaylistIcon className="w-10 h-10 text-white/30" />
+                      </div>
+                    )}
+                  </div>
+                  <div className="text-sm text-on-surface truncate group-hover:text-primary transition-colors font-medium">{playlist.name}</div>
+                  <div className="text-xs text-outline truncate">{playlist.track_count} tracks</div>
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
+        )}
         
-        <div className="flex flex-col min-h-0 justify-center">
-          <span className="text-primary text-[11px] uppercase tracking-widest mb-2 block">{playlistName ? "Playlist" : "Library"}</span>
-          <h2 className="text-4xl md:text-5xl font-serif text-white mb-4 leading-tight tracking-wide uppercase">{playlistName || "ALL TRACKS"}</h2>
-          <p className="text-stone-500 text-[10px] font-bold mb-6 tracking-[0.2em] uppercase">{playlistName ? `${tracks.length} TRACKS` : `${tracks.length} TRACKS`}</p>
-          <div className="flex items-center gap-4">
-            <button onClick={onPlayAll} className="px-8 py-3 rounded-full bg-gradient-to-r from-primary to-tertiary-container text-bg text-[12px] font-semibold uppercase tracking-wider flex items-center gap-2 hover:shadow-[0_0_20px_rgba(255,176,205,0.4)] transition-shadow">
-              <Play className="w-4 h-4" fill="currentColor" />
-              Play All
-            </button>
-            <button onClick={onShuffle} className="px-6 py-3 rounded-full bg-white/10 text-on-surface text-[12px] font-semibold uppercase tracking-wider hover:bg-white/20 transition-colors">
-              <Shuffle className="w-4 h-4 inline mr-2" />
-              Shuffle
-            </button>
-          </div>
-        </div>
-      </section>
-      
-      {/* History Section */}
-      {history.length > 0 && (
         <div className="mb-8">
           <div className="flex items-center gap-2 mb-4">
-            <span className="text-[11px] text-stone-500 uppercase tracking-widest">Recently Played</span>
+            <span className="text-[11px] text-stone-500 uppercase tracking-widest">All Playlists</span>
           </div>
-          <div className="flex gap-3 overflow-x-auto pb-2">
-            {history.slice(0, 5).map((item, idx) => (
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
+            {otherPlaylists.map((playlist) => (
               <button 
-                key={idx}
-                onClick={() => onPlayTrack(item.track)}
-                className="shrink-0 flex items-center gap-3 px-3 py-2 bg-white/[0.03] backdrop-blur-sm rounded-lg hover:bg-white/[0.08] border border-white/[0.05] transition-all"
+                key={playlist.id}
+                onClick={() => onSelectPlaylist?.(playlist)}
+                className="group text-left"
               >
-                <div className="w-8 h-8 rounded bg-gradient-to-br from-primary/20 to-secondary-container/20 flex items-center justify-center">
-                  <div className="w-3 h-3 rounded-full bg-primary/50"></div>
+                <div className="aspect-square rounded-lg overflow-hidden bg-surface-container-high mb-3 shadow-lg group-hover:scale-[1.02] transition-transform">
+                  {playlist.trackCovers && playlist.trackCovers.length > 0 ? (
+                    <div className="w-full h-full grid grid-cols-2 grid-rows-2">
+                      {playlist.trackCovers.slice(0, 4).map((cover, i) => (
+                        <img key={i} src={cover} alt="" className="w-full h-full object-cover" />
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="w-full h-full bg-gradient-to-br from-surface-container-high to-surface flex items-center justify-center">
+                      <PlaylistIcon className="w-16 h-16 text-white/30" />
+                    </div>
+                  )}
                 </div>
-                <span className="text-sm text-stone-300 truncate max-w-[120px]">{item.track.title}</span>
+                <div className="text-sm font-medium text-on-surface truncate group-hover:text-primary transition-colors">{playlist.name}</div>
+                <div className="text-xs text-outline truncate">{playlist.track_count} tracks</div>
               </button>
             ))}
           </div>
         </div>
-      )}
-
-      <div className="flex items-center gap-2 mb-4">
-        <span className="text-outline text-[11px] uppercase tracking-widest mr-2">Sort by:</span>
-        {(["title", "artist", "album", "duration"] as const).map((s) => (
-          <button
-            key={s}
-            onClick={() => onSortBy(s)}
-            className={`px-3 py-1 rounded-sm text-xs transition-all duration-300 ${sortBy === s ? "text-primary/80" : "bg-transparent text-stone-500 hover:text-white"}`}
-          >
-            {s.charAt(0).toUpperCase() + s.slice(1)}
-          </button>
-        ))}
       </div>
+    );
+  }
 
-      <div className="grid grid-cols-[40px_1fr_150px_80px] gap-4 px-4 py-2 border-b border-white/[0.03] text-stone-600 text-[9px] uppercase tracking-widest mb-2 opacity-30">
-        <div className="text-center">#</div>
-        <div>Title</div>
-        <div className="mr-8">Album</div>
-        <div className="text-right"></div>
+  return (
+    <div className="rounded-xl overflow-hidden">
+      <div 
+        className="p-8 pb-32 relative overflow-hidden"
+        style={{ 
+          background: `linear-gradient(180deg, ${bgColor} 0%, ${darkenColor(bgColor, 0.7)} 100%)`
+        }}
+      >
+        <div className="absolute inset-0 opacity-20" style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")` }}></div>
+        
+        <section className="relative z-10 flex gap-8 items-end">
+          <div 
+            className="w-52 h-52 md:w-60 md:h-60 shrink-0 rounded-lg overflow-hidden shadow-[0_20px_60px_-15px_rgba(0,0,0,0.8)] group cursor-pointer"
+            onClick={onPlayAll}
+          >
+            {playlistCover?.startsWith('data:') ? (
+              <img src={playlistCover} alt="" className="w-full h-full object-cover" />
+            ) : (
+              <div className="w-full h-full bg-gradient-to-br from-surface-container-high to-surface-container flex items-center justify-center">
+                <PlaylistIcon className="w-20 h-20 text-white/30" />
+              </div>
+            )}
+          </div>
+          
+          <div className="flex flex-col min-h-0 justify-end flex-1">
+            <span className="text-white/70 text-xs uppercase tracking-wider mb-2">Playlist</span>
+            <h2 className="text-4xl md:text-6xl font-bold text-white mb-4 leading-tight tracking-tight">
+              {playlistName || "All Tracks"}
+            </h2>
+            <p className="text-white/60 text-sm mb-6">
+              {tracks.length} tracks, <span className="text-white/50">{durationText}</span>
+            </p>
+            <div className="flex items-center gap-4">
+              <button 
+                onClick={onPlayAll} 
+                className="w-14 h-14 rounded-full bg-primary flex items-center justify-center hover:scale-105 active:scale-95 transition-all shadow-lg"
+              >
+                <Play className="w-6 h-6 text-black ml-1" fill="currentColor" />
+              </button>
+              <button 
+                onClick={onShuffle} 
+                className="text-white/50 hover:text-white transition-colors"
+              >
+                <Shuffle className="w-8 h-8" />
+              </button>
+            </div>
+          </div>
+        </section>
       </div>
       
-      <div className="space-y-1 mb-12 min-h-0">
-        {sortedTracks.map((track, index) => {
-          const isFavorite = favorites.some(f => f.path === track.path);
-          return (
-            <div
-              key={track.id}
-              onClick={() => onPlayTrack(track)}
-              className={`grid grid-cols-[40px_1fr_150px_80px] gap-4 px-4 py-3 rounded-lg items-center group cursor-pointer transition-colors relative overflow-hidden ${
-                currentTrack?.id === track.id ? "bg-white/5 border border-white/5" : "hover:bg-white/5 border border-transparent"
-              }`}
+      <div className="bg-gradient-to-b from-surface-container/50 to-bg px-8 pt-8 -mt-20 relative z-20">
+
+        <div className="flex items-center gap-2 mb-4">
+          <span className="text-outline text-[11px] uppercase tracking-widest mr-2">Sort by:</span>
+          {(["title", "artist", "album", "duration"] as const).map((s) => (
+            <button
+              key={s}
+              onClick={() => onSortBy(s)}
+              className={`px-3 py-1 rounded-sm text-xs transition-all duration-300 ${sortBy === s ? "text-primary/80" : "bg-transparent text-stone-500 hover:text-white"}`}
             >
-              {currentTrack?.id === track.id && <div className="absolute left-0 top-0 bottom-0 w-1 bg-primary"></div>}
-              <div className="text-center w-full flex justify-center">
-                {currentTrack?.id === track.id && isPlaying ? (
-                  <div className="w-4 h-4 relative flex items-end gap-[2px]">
-                    <span className="w-[3px] bg-primary rounded-t-sm h-[8px]"></span>
-                    <span className="w-[3px] bg-primary rounded-t-sm h-[14px]"></span>
-                    <span className="w-[3px] bg-primary rounded-t-sm h-[10px]"></span>
-                  </div>
-                ) : (
-                  <span className="text-outline text-sm group-hover:hidden">{index + 1}</span>
-                )}
-                {currentTrack?.id !== track.id && (
-                  <Play className="w-4 h-4 hidden group-hover:block text-on-surface" />
-                )}
-              </div>
-              <div className="flex items-center gap-4 overflow-hidden">
-                <div className="w-10 h-10 rounded bg-surface-container-high flex items-center justify-center shrink-0 overflow-hidden">
-                  {track.cover ? <img src={track.cover} alt="" className="w-full h-full object-cover" /> : <Music className="w-5 h-5 text-outline" />}
+              {s.charAt(0).toUpperCase() + s.slice(1)}
+            </button>
+          ))}
+        </div>
+
+        <div className="grid grid-cols-[40px_1fr_150px_80px] gap-4 px-4 py-2 border-b border-white/[0.03] text-stone-600 text-[9px] uppercase tracking-widest mb-2 opacity-30">
+          <div className="text-center">#</div>
+          <div>Title</div>
+          <div className="mr-8">Album</div>
+          <div className="text-right"></div>
+        </div>
+        
+        <div className="space-y-1 mb-12 min-h-0">
+          {sortedTracks.map((track, index) => {
+            const isFavorite = favorites.some(f => f.path === track.path);
+            return (
+              <div
+                key={track.id}
+                onClick={() => onPlayTrack(track)}
+                className={`grid grid-cols-[30px_1fr_120px_60px] gap-2 px-2 py-2 rounded-lg items-center group cursor-pointer transition-colors relative overflow-hidden ${
+                  currentTrack?.id === track.id ? "bg-white/5 border border-white/5" : "hover:bg-white/5 border border-transparent"
+                }`}
+              >
+                {currentTrack?.id === track.id && <div className="absolute left-0 top-0 bottom-0 w-1 bg-primary"></div>}
+                <div className="text-center w-full flex justify-center">
+                  {currentTrack?.id === track.id && isPlaying ? (
+                    <div className="w-3 h-3 relative flex items-end gap-[1px]">
+                      <span className="w-[2px] bg-primary rounded-t-sm h-[6px]"></span>
+                      <span className="w-[2px] bg-primary rounded-t-sm h-[10px]"></span>
+                      <span className="w-[2px] bg-primary rounded-t-sm h-[8px]"></span>
+                    </div>
+                  ) : (
+                    <span className="text-outline text-xs group-hover:hidden">{index + 1}</span>
+                  )}
+                  {currentTrack?.id !== track.id && (
+                    <Play className="w-3 h-3 hidden group-hover:block text-on-surface" />
+                  )}
                 </div>
-                <div className="truncate">
-                  <div className={`text-sm font-medium truncate ${currentTrack?.id === track.id ? "text-primary" : "text-on-surface group-hover:text-primary transition-colors"}`}>
-                    {track.title}
+                <div className="flex items-center gap-3 overflow-hidden">
+                  <div className="w-8 h-8 rounded bg-surface-container-high flex items-center justify-center shrink-0 overflow-hidden">
+                    {track.cover ? <img src={track.cover} alt="" className="w-full h-full object-cover" /> : <Music className="w-4 h-4 text-outline" />}
                   </div>
-                  <div className="text-[11px] text-outline truncate mt-0.5">{track.artist}</div>
+                  <div className="truncate">
+                    <div className={`text-xs font-medium truncate ${currentTrack?.id === track.id ? "text-primary" : "text-on-surface group-hover:text-primary transition-colors"}`}>
+                      {track.title}
+                    </div>
+                    <div className="text-[10px] text-outline truncate mt-0.5">{track.artist}</div>
+                  </div>
+                </div>
+                <div className="text-outline text-[11px] truncate mr-4">{track.album}</div>
+                <div className="text-right text-outline text-[11px] flex items-center justify-end gap-2">
+                  <button 
+                    onClick={(e) => { e.stopPropagation(); onToggleFavorite(track); }}
+                    className="transition-colors hover:text-white p-1"
+                  >
+                    {isFavorite ? <HeartFilled className="w-3 h-3 text-primary fill-primary" /> : <Heart className={`w-3 h-3 ${currentTrack?.id === track.id ? "text-primary" : "opacity-0 group-hover:opacity-100"}`} />}
+                  </button>
+                  {formatDuration(track.duration)}
                 </div>
               </div>
-              <div className="text-outline text-[12px] truncate mr-8">{track.album}</div>
-              <div className="text-right text-outline text-[12px] flex items-center justify-end gap-3">
-                <button 
-                  onClick={(e) => { e.stopPropagation(); onToggleFavorite(track); }}
-                  className="transition-colors hover:text-white"
-                >
-                  {isFavorite ? <HeartFilled className="w-4 h-4 text-primary fill-primary" /> : <Heart className={`w-4 h-4 ${currentTrack?.id === track.id ? "text-primary" : "opacity-0 group-hover:opacity-100"}`} />}
-                </button>
-                {formatDuration(track.duration)}
-              </div>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
 
       <div className="h-20"></div>
@@ -722,6 +876,9 @@ function App() {
   const [currentPlaylist, setCurrentPlaylist] = useState<Playlist | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [sidebarPlaylistView, setSidebarPlaylistView] = useState<"compact" | "expanded">("expanded");
+  const [titlebarHeight, setTitlebarHeight] = useState(56);
+  const [sidebarWidth, setSidebarWidth] = useState(280);
   
   const [tracks, setTracks] = useState<Track[]>(() => loadFromStorage(STORAGE_KEYS.tracks, []));
   const [playlists, setPlaylists] = useState<Playlist[]>(() => loadFromStorage(STORAGE_KEYS.playlists, []));
@@ -780,8 +937,13 @@ function App() {
     return loadFromStorage(key, defaultValue);
   }
 
-  useEffect(() => { loadLibrary(); setTimeout(() => setIsLoading(false), 2000); }, [libraryPath]);
-useEffect(() => { if (libraryPath) { loadLibrary(); setTimeout(() => setIsLoading(false), 2000); } }, []);
+  const libraryLoaded = useRef(false);
+  useEffect(() => {
+    if (libraryLoaded.current) return;
+    libraryLoaded.current = true;
+    loadLibrary();
+    setTimeout(() => setIsLoading(false), 2000);
+  }, []);
   
   useEffect(() => {
     if (audioRef.current) {
@@ -848,8 +1010,58 @@ useEffect(() => { if (libraryPath) { loadLibrary(); setTimeout(() => setIsLoadin
           try {
             const subEntries = await readDir(fullPath);
             const trackCount = subEntries.filter(e => isMusicFile(e.name)).length;
-            playlists.push({ id: playlistId++, name, path: fullPath, track_count: trackCount });
-          } catch { playlists.push({ id: playlistId++, name, path: fullPath, track_count: 0 }); }
+            
+            const subTracks: Track[] = [];
+            let subTrackId = Date.now();
+            for (const subEntry of subEntries) {
+              if (isMusicFile(subEntry.name)) {
+                const trackPath = fullPath + (fullPath.endsWith('\\') ? '' : '\\') + subEntry.name;
+                const existingTrack = tracks.find(t => t.path === trackPath);
+                if (existingTrack) {
+                  subTracks.push(existingTrack);
+                } else {
+                  subTracks.push({
+                    id: subTrackId++,
+                    path: trackPath,
+                    title: subEntry.name.replace(/\.[^.]+$/, ''),
+                    artist: 'Unknown Artist',
+                    album: 'Unknown Album',
+                    duration: 0,
+                    cover: undefined
+                  });
+                }
+              }
+            }
+            
+            const firstFourTracks = subTracks.slice(0, 4);
+            for (const track of firstFourTracks) {
+              if (!track.cover || track.artist === 'Unknown Artist') {
+                try {
+                  const meta = await invoke<{ title: string; artist: string; album: string; duration: number; cover: string | null } | null>("get_audio_metadata", { path: track.path });
+                  if (meta) {
+                    track.title = meta.title;
+                    track.artist = meta.artist;
+                    track.album = meta.album;
+                    track.duration = meta.duration;
+                    track.cover = meta.cover || undefined;
+                  }
+                } catch {}
+              }
+            }
+            
+            const trackCovers = subTracks.filter(t => t.cover && t.cover.startsWith('data:')).slice(0, 4).map(t => t.cover!);
+            const generatedCover = generatePlaylistCover(subTracks);
+            playlists.push({ 
+              id: playlistId++, 
+              name, 
+              path: fullPath, 
+              track_count: trackCount,
+              cover: generatedCover || undefined,
+              trackCovers
+            });
+          } catch { 
+            playlists.push({ id: playlistId++, name, path: fullPath, track_count: 0 }); 
+          }
         } else {
           if (isMusicFile(name)) {
             const existing = existingByPath.get(fullPath);
@@ -862,31 +1074,11 @@ useEffect(() => { if (libraryPath) { loadLibrary(); setTimeout(() => setIsLoadin
           }
         }
       }
+      
       setTracks(newTracks);
       saveToStorage(STORAGE_KEYS.tracks, newTracks);
       setPlaylists(playlists);
-      
-      const loadMissingMetadata = async () => {
-        const tracksWithoutMeta = newTracks.filter(t => !t.cover || t.artist === 'Unknown Artist' || t.duration === 0);
-        const batchSize = 15;
-        for (let i = 0; i < tracksWithoutMeta.length; i += batchSize) {
-          const batch = tracksWithoutMeta.slice(i, i + batchSize);
-          await Promise.all(batch.map(async (track) => {
-            try {
-              const meta = await invoke<{ title: string; artist: string; album: string; duration: number; cover: string | null } | null>("get_audio_metadata", { path: track.path });
-              if (meta) {
-                setTracks(prev => {
-                  const updated = prev.map(t => t.id === track.id ? { ...t, title: meta.title, artist: meta.artist, album: meta.album, duration: meta.duration, cover: meta.cover || undefined } : t);
-                  return updated;
-                });
-              }
-            } catch {}
-          }));
-        }
-        saveToStorage(STORAGE_KEYS.tracks, newTracks);
-      };
-      
-      loadMissingMetadata();
+      saveToStorage(STORAGE_KEYS.playlists, playlists);
     } catch (e) { 
       console.error("Failed to load library:", e);
     }
@@ -1087,46 +1279,61 @@ useEffect(() => { if (libraryPath) { loadLibrary(); setTimeout(() => setIsLoadin
   const handleSelectPlaylist = async (playlist: Playlist) => {
     try {
       const entries = await readDir(playlist.path);
+      const existingTracks = new Map(tracks.map(t => [t.path, t]));
       const newTracks: Track[] = [];
       let trackId = Date.now();
+      
       for (const entry of entries) {
         if (isMusicFile(entry.name)) {
           const fullPath = playlist.path + (playlist.path.endsWith('\\') ? '' : '\\') + entry.name;
-          newTracks.push({ id: trackId++, path: fullPath, title: entry.name.replace(/\.[^.]+$/, ''), artist: 'Unknown Artist', album: 'Unknown Album', duration: 0, cover: undefined });
+          const existing = existingTracks.get(fullPath);
+          if (existing && existing.artist !== 'Unknown Artist') {
+            newTracks.push(existing);
+          } else {
+            newTracks.push({ id: trackId++, path: fullPath, title: entry.name.replace(/\.[^.]+$/, ''), artist: 'Unknown Artist', album: 'Unknown Album', duration: 0, cover: undefined });
+          }
         }
       }
+      
+      const tracksWithCover = newTracks.filter(t => t.cover && t.cover.startsWith('data:'));
+      const trackCovers = tracksWithCover.slice(0, 4).map(t => t.cover!);
+      const generatedCover = generatePlaylistCover(newTracks);
+      
+      const updatedPlaylist = { 
+        ...playlist, 
+        cover: generatedCover || playlist.cover, 
+        track_count: newTracks.length,
+        trackCovers: trackCovers
+      };
+      
+      setPlaylists(prev => {
+        const updated = prev.map(p => p.path === playlist.path ? updatedPlaylist : p);
+        saveToStorage(STORAGE_KEYS.playlists, updated);
+        return updated;
+      });
+      
       setTracks(newTracks);
       setCurrentView("library");
       setCurrentPlaylist(playlist);
       
-      const loadMetadataParallel = async () => {
-        const batchSize = 20;
-        for (let i = 0; i < newTracks.length; i += batchSize) {
-          const batch = newTracks.slice(i, i + batchSize);
-          await Promise.all(batch.map(async (track) => {
+      setTimeout(async () => {
+        for (const track of newTracks) {
+          if (track.artist === 'Unknown Artist' || !track.cover) {
             try {
               const meta = await invoke<{ title: string; artist: string; album: string; duration: number; cover: string | null } | null>("get_audio_metadata", { path: track.path });
               if (meta) {
-                setTracks(prev => {
-                  const updated = prev.map(t => t.id === track.id ? { ...t, title: meta.title, artist: meta.artist, album: meta.album, duration: meta.duration, cover: meta.cover || undefined } : t);
-                  return updated;
-                });
+                track.title = meta.title;
+                track.artist = meta.artist;
+                track.album = meta.album;
+                track.duration = meta.duration;
+                track.cover = meta.cover || undefined;
               }
             } catch {}
-          }));
-          saveToStorage(STORAGE_KEYS.tracks, newTracks);
+          }
         }
-      };
-      
-      loadMetadataParallel();
-      
-      if (newTracks.length > 0 && newTracks[0].cover) {
-        setPlaylists(prev => {
-          const updated = prev.map(p => p.path === playlist.path ? { ...p, cover: newTracks[0].cover, track_count: newTracks.length } : p);
-          saveToStorage(STORAGE_KEYS.playlists, updated);
-          return updated;
-        });
-      }
+        setTracks([...newTracks]);
+        saveToStorage(STORAGE_KEYS.tracks, newTracks);
+      }, 100);
     } catch (e) { console.error("Failed to load playlist:", e); }
   };
 
@@ -1205,47 +1412,80 @@ useEffect(() => { if (libraryPath) { loadLibrary(); setTimeout(() => setIsLoadin
       {showCreatePlaylist && <CreatePlaylistModal onClose={() => setShowCreatePlaylist(false)} onCreate={handleConfirmCreatePlaylist} />}
       {editingPlaylist && <EditPlaylistModal playlist={editingPlaylist} onClose={() => setEditingPlaylist(null)} onSave={handleSavePlaylist} onDelete={handleDeletePlaylist} />}
       
-      <header className="fixed top-0 left-0 right-0 z-[60] bg-surface-container-lowest/80 backdrop-blur-md border-b border-surface-container-high/50 h-14 flex items-center justify-between pl-6 shadow-2xl" data-tauri-drag-region>
-        <div className="flex items-center gap-4 w-1/3">
-          <button onClick={goBack} disabled={historyIndex === 0} className={`p-2 transition-colors ${historyIndex === 0 ? 'text-white/20 cursor-not-allowed' : 'text-outline hover:text-primary'}`}><ChevronLeft className="w-5 h-5" /></button>
-          <button onClick={goForward} disabled={historyIndex === navHistory.length - 1} className={`p-2 transition-colors ${historyIndex === navHistory.length - 1 ? 'text-white/20 cursor-not-allowed' : 'text-outline hover:text-primary'}`}><ChevronRight className="w-5 h-5" /></button>
-        </div>
-        <div className="flex-1 flex justify-center w-1/3 max-w-xl">
-          <div className="relative w-full max-w-md group">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-outline text-sm group-focus-within:text-primary transition-colors w-4 h-4" />
-            <input 
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full bg-stone-900/50 border border-outline/20 hover:border-outline/40 rounded-md py-1.5 pl-10 pr-4 text-sm text-on-surface focus:outline-none focus:bg-stone-900/80 focus:border-primary/50 transition-all placeholder-outline" 
-              placeholder="Search artists, tracks, or playlists..." 
-              type="text"
-            />
+      <header className={`fixed top-0 left-0 right-0 z-[60] bg-surface-container-lowest/80 backdrop-blur-md border-b border-surface-container-high/50 flex items-center justify-between pl-4 shadow-2xl`} style={{ height: titlebarHeight }} data-tauri-drag-region>
+        <div className="flex items-center gap-2">
+          <button onClick={() => navigateTo("settings")} className="p-2 text-outline hover:text-primary transition-colors" title="Settings">
+            <MoreHorizontal className="w-5 h-5" />
+          </button>
+          <div className="flex items-center gap-1">
+            <button onClick={goBack} disabled={historyIndex === 0} className={`p-2 transition-colors ${historyIndex === 0 ? 'text-white/20 cursor-not-allowed' : 'text-outline hover:text-primary'}`}><ChevronLeft className="w-4 h-4" /></button>
+            <button onClick={goForward} disabled={historyIndex === navHistory.length - 1} className={`p-2 transition-colors ${historyIndex === navHistory.length - 1 ? 'text-white/20 cursor-not-allowed' : 'text-outline hover:text-primary'}`}><ChevronRight className="w-4 h-4" /></button>
           </div>
         </div>
-        <div className="flex items-center justify-end w-1/3 h-full">
-          <div className="flex items-center gap-4 mr-4">
+        
+        {titlebarHeight >= 50 && (
+          <div className="flex-1 flex justify-center max-w-xl px-4">
+            <div className="relative w-full max-w-md group">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-outline text-sm group-focus-within:text-primary transition-colors w-4 h-4" />
+              <input 
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full bg-stone-900/50 border border-outline/20 hover:border-outline/40 rounded-md py-1.5 pl-10 pr-4 text-sm text-on-surface focus:outline-none focus:bg-stone-900/80 focus:border-primary/50 transition-all placeholder-outline" 
+                placeholder="Search artists, tracks, or playlists..." 
+                type="text"
+              />
+            </div>
           </div>
-          <div className="flex items-center h-full">
-            <button onClick={() => getCurrentWindow().minimize()} className="w-12 h-full flex items-center justify-center hover:bg-stone-800/50 transition-colors text-outline hover:text-primary"><Minus className="w-4 h-4" /></button>
-            <button onClick={() => getCurrentWindow().toggleMaximize()} className="w-12 h-full flex items-center justify-center hover:bg-stone-800/50 transition-colors text-outline hover:text-primary"><Square className="w-3 h-3" /></button>
-            <button onClick={() => getCurrentWindow().close()} className="w-12 h-full flex items-center justify-center hover:bg-red-900/80 hover:text-white transition-colors text-outline"><X className="w-4 h-4" /></button>
-          </div>
+        )}
+        
+        <div className="flex items-center h-full">
+          <div 
+            className="w-full h-1 absolute bottom-0 cursor-ns-resize hover:bg-primary/50"
+            onMouseDown={(e) => {
+              e.preventDefault();
+              const startY = e.clientY;
+              const startHeight = titlebarHeight;
+              const onMouseMove = (moveEvent: MouseEvent) => {
+                const newHeight = Math.max(40, Math.min(80, startHeight + (startY - moveEvent.clientY)));
+                setTitlebarHeight(newHeight);
+              };
+              const onMouseUp = () => {
+                document.removeEventListener('mousemove', onMouseMove);
+                document.removeEventListener('mouseup', onMouseUp);
+              };
+              document.addEventListener('mousemove', onMouseMove);
+              document.addEventListener('mouseup', onMouseUp);
+            }}
+          />
+          <button onClick={() => getCurrentWindow().minimize()} className="w-10 h-full flex items-center justify-center hover:bg-stone-800/50 transition-colors text-outline hover:text-primary"><Minus className="w-4 h-4" /></button>
+          <button onClick={() => getCurrentWindow().toggleMaximize()} className="w-10 h-full flex items-center justify-center hover:bg-stone-800/50 transition-colors text-outline hover:text-primary"><Square className="w-3 h-3" /></button>
+          <button onClick={() => getCurrentWindow().close()} className="w-10 h-full flex items-center justify-center hover:bg-red-900/80 hover:text-white transition-colors text-outline"><X className="w-4 h-4" /></button>
         </div>
       </header>
 
-      <div className="flex flex-1 pt-14">
-        <aside className="w-20 md:w-[280px] bg-surface-container-low/95 border-r border-white/[0.03] flex flex-col py-6 px-2 md:py-10 md:px-4 fixed left-0 top-14 h-[calc(100vh-3.5rem)] z-40 shadow-[10px_0_30px_-5px_rgba(0,0,0,0.8)] font-serif tracking-tight text-sm uppercase transition-all duration-300">
-          <div className="px-2 md:px-6 mb-6 flex flex-col md:flex-row items-center gap-2 md:gap-4">
-            <div className="w-10 h-10 md:w-14 md:h-14 rounded-full overflow-hidden border border-primary/30 shadow-[0_0_15px_rgba(247,189,72,0.3)]">
-              <div className="w-full h-full bg-gradient-to-br from-primary/20 to-secondary-container/20 flex items-center justify-center">
-                <Music className="w-5 h-5 md:w-7 md:h-7 text-primary" />
-              </div>
-            </div>
-          </div>
-
-          <nav className="flex-1 px-1 md:px-4 space-y-1">
-            <div className="hidden md:block text-[11px] text-outline uppercase tracking-widest px-4 mb-4 mt-6">Browse</div>
-            <button onClick={() => navigateTo("library")} className={`w-full flex items-center gap-2 md:gap-4 py-3 pl-4 md:pl-6 rounded-sm transition-all duration-300 ${currentView === "library" ? "text-primary font-bold border-r-[2px] border-primary shadow-[0_0_10px_rgba(212,175,55,0.4)] bg-gradient-to-r from-primary/10 to-transparent" : "text-stone-500 hover:text-primary hover:bg-stone-800/50"}`}>
+      <div className="flex flex-1" style={{ marginTop: titlebarHeight }}>
+        <aside className="bg-surface-container-lowest/95 border-r border-white/[0.03] flex flex-col py-6 px-3 md:px-4 fixed left-0 z-40 shadow-[10px_0_30px_-5px_rgba(0,0,0,0.8)] font-serif tracking-tight text-sm uppercase transition-all duration-300 flex flex-col" style={{ top: titlebarHeight, height: `calc(100vh - ${titlebarHeight}px)`, width: sidebarWidth }}>
+          <div 
+            className="absolute right-0 top-0 w-1 h-full cursor-ew-resize hover:bg-primary/50"
+            onMouseDown={(e) => {
+              e.preventDefault();
+              const startX = e.clientX;
+              const startWidth = sidebarWidth;
+              const onMouseMove = (moveEvent: MouseEvent) => {
+                const newWidth = Math.max(60, Math.min(400, startWidth + (moveEvent.clientX - startX)));
+                setSidebarWidth(newWidth);
+              };
+              const onMouseUp = () => {
+                document.removeEventListener('mousemove', onMouseMove);
+                document.removeEventListener('mouseup', onMouseUp);
+              };
+              document.addEventListener('mousemove', onMouseMove);
+              document.addEventListener('mouseup', onMouseUp);
+            }}
+          />
+          <nav className="flex-1 px-1 md:px-4 space-y-1 overflow-y-auto">
+            <div className="hidden md:block text-[11px] text-outline uppercase tracking-widest px-4 mb-4">Browse</div>
+            <button onClick={() => { setCurrentPlaylist(null); setCurrentView("library"); }} className={`w-full flex items-center gap-2 md:gap-4 py-3 pl-4 md:pl-6 rounded-sm transition-all duration-300 ${currentView === "library" && !currentPlaylist ? "text-primary font-bold border-r-[2px] border-primary shadow-[0_0_10px_rgba(212,175,55,0.4)] bg-gradient-to-r from-primary/10 to-transparent" : "text-stone-500 hover:text-primary hover:bg-stone-800/50"}`}>
               <Home className={`w-4 h-4 md:w-5 md:h-5 ${currentView === "library" ? "text-primary" : ""}`} />
               <span className="hidden md:inline">Home</span>
             </button>
@@ -1253,22 +1493,114 @@ useEffect(() => { if (libraryPath) { loadLibrary(); setTimeout(() => setIsLoadin
               <PlaylistIcon className="w-4 h-4 md:w-5 md:h-5 text-stone-500" />
               <span className="hidden md:inline">Playlists</span>
             </button>
-            <button onClick={() => navigateTo("favorites")} className={`w-full flex items-center gap-2 md:gap-4 py-3 pl-4 md:pl-6 rounded-sm transition-all duration-300 ${currentView === "favorites" ? "text-primary font-bold border-r-[2px] border-primary shadow-[0_0_10px_rgba(212,175,55,0.4)] bg-gradient-to-r from-primary/10 to-transparent" : "text-stone-500 hover:text-primary hover:bg-stone-800/50"}`}>
-              <Heart className={`w-4 h-4 md:w-5 md:h-5 ${currentView === "favorites" ? "text-primary" : ""}`} />
-              <span className="hidden md:inline">Favorites</span>
+            <button onClick={() => {
+              if (favorites.length > 0) {
+                setTracks(favorites.map(f => ({ ...f, id: f.id, title: f.title, artist: f.artist, album: f.album || 'Unknown', duration: f.duration || 0 })));
+                setCurrentPlaylist({ id: -1, name: 'Favorites', path: '', track_count: favorites.length, cover: undefined });
+                setCurrentView("library");
+              } else {
+                navigateTo("favorites");
+              }
+            }} className={`w-full flex items-center gap-2 md:gap-4 py-3 pl-4 md:pl-6 rounded-sm transition-all duration-300 ${currentView === "favorites" || currentPlaylist?.id === -1 ? "text-primary font-bold border-r-[2px] border-primary shadow-[0_0_10px_rgba(212,175,55,0.4)] bg-gradient-to-r from-primary/10 to-transparent" : "text-stone-500 hover:text-primary hover:bg-stone-800/50"}`}>
+              <Heart className={`w-4 h-4 md:w-5 md:h-5 ${currentView === "favorites" || currentPlaylist?.id === -1 ? "text-primary" : ""}`} />
+              <div className="hidden md:flex flex-col items-start">
+                <span>Favorites</span>
+                <span className="text-[10px] text-outline">{favorites.length} tracks</span>
+              </div>
             </button>
           </nav>
 
-          <div className="mt-auto px-1 md:px-4 space-y-1 pb-20 md:pb-24">
-            <div className="hidden md:block text-[11px] text-outline uppercase tracking-widest px-4 mb-4">System</div>
-            <button onClick={() => navigateTo("settings")} className={`w-full flex items-center gap-2 md:gap-4 py-3 pl-4 md:pl-6 rounded-sm transition-all duration-300 ${currentView === "settings" ? "text-primary font-bold border-r-[2px] border-primary shadow-[0_0_10px_rgba(212,175,55,0.4)] bg-gradient-to-r from-primary/10 to-transparent" : "text-stone-500 hover:text-primary hover:bg-stone-800/50"}`}>
-              <Settings className="w-4 h-4 md:w-5 md:h-5" />
-              <span className="hidden md:inline">Settings</span>
-            </button>
+          <div className="mt-4 px-1 md:px-4 pb-20 md:pb-24">
+            <div className="hidden md:flex items-center justify-between text-[11px] text-outline uppercase tracking-widest px-4 mb-4">
+              <span>Playlists</span>
+              <button onClick={() => setSidebarPlaylistView(v => v === "expanded" ? "compact" : "expanded")} className="hover:text-primary transition-colors">
+                {sidebarPlaylistView === "expanded" ? <ListMusic className="w-4 h-4" /> : <Home className="w-4 h-4" />}
+              </button>
+            </div>
+            
+            {sidebarPlaylistView === "expanded" ? (
+              <div className="space-y-1 max-h-[300px] overflow-y-auto pr-2">
+                {favorites.length > 0 && (
+                  <button 
+                    onClick={() => {
+                      setTracks(favorites.map(f => ({ ...f, id: f.id, title: f.title, artist: f.artist, album: f.album || 'Unknown', duration: f.duration || 0 })));
+                      setCurrentPlaylist({ id: -1, name: 'Favorites', path: '', track_count: favorites.length, cover: undefined });
+                      setCurrentView("library");
+                    }}
+                    className={`w-full flex items-center gap-3 py-2 pl-2 md:pl-4 rounded-md hover:bg-white/5 transition-all group ${currentPlaylist?.id === -1 ? 'bg-white/10' : ''}`}
+                  >
+                    <div className="w-10 h-10 shrink-0 rounded-md bg-gradient-to-br from-primary/30 to-secondary-container/30 flex items-center justify-center">
+                      <Heart className="w-5 h-5 text-primary" fill="currentColor" />
+                    </div>
+                    <div className="flex-1 text-left min-w-0">
+                      <div className="text-xs md:text-sm text-on-surface truncate group-hover:text-primary transition-colors">Favorites</div>
+                      <div className="text-[10px] text-outline truncate">{favorites.length} tracks</div>
+                    </div>
+                  </button>
+                )}
+                {playlists.map((playlist) => (
+                  <button 
+                    key={playlist.id}
+                    onClick={() => handleSelectPlaylist(playlist)}
+                    className="w-full flex items-center gap-3 py-2 pl-2 md:pl-4 rounded-md hover:bg-white/5 transition-all group"
+                  >
+                    <div className="w-10 h-10 shrink-0 rounded-md overflow-hidden bg-surface-container-high flex items-center justify-center">
+                      {playlist.trackCovers && playlist.trackCovers.length > 0 ? (
+                        <div className="w-full h-full grid grid-cols-2 grid-rows-2">
+                          {playlist.trackCovers.slice(0, 4).map((cover, i) => (
+                            <img key={i} src={cover} alt="" className="w-full h-full object-cover" />
+                          ))}
+                        </div>
+                      ) : (
+                        <PlaylistIcon className="w-5 h-5 text-outline" />
+                      )}
+                    </div>
+                    <div className="flex-1 text-left min-w-0">
+                      <div className="text-xs md:text-sm text-on-surface truncate group-hover:text-primary transition-colors">{playlist.name}</div>
+                      <div className="text-[10px] text-outline truncate">{playlist.track_count} tracks</div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-2 pr-2">
+                {favorites.length > 0 && (
+                  <button 
+                    onClick={() => {
+                      setTracks(favorites.map(f => ({ ...f, id: f.id, title: f.title, artist: f.artist, album: f.album || 'Unknown', duration: f.duration || 0 })));
+                      setCurrentPlaylist({ id: -1, name: 'Favorites', path: '', track_count: favorites.length, cover: undefined });
+                      setCurrentView("library");
+                    }}
+                    className="aspect-square rounded-md bg-gradient-to-br from-primary/30 to-secondary-container/30 group hover:ring-2 hover:ring-primary/50 transition-all flex items-center justify-center"
+                  >
+                    <Heart className="w-8 h-8 text-primary" fill="currentColor" />
+                  </button>
+                )}
+                {playlists.map((playlist) => (
+                  <button 
+                    key={playlist.id}
+                    onClick={() => handleSelectPlaylist(playlist)}
+                    className="aspect-square rounded-md overflow-hidden bg-surface-container-high group hover:ring-2 hover:ring-primary/50 transition-all"
+                  >
+                    {playlist.trackCovers && playlist.trackCovers.length > 0 ? (
+                      <div className="w-full h-full grid grid-cols-2 grid-rows-2">
+                        {playlist.trackCovers.slice(0, 4).map((cover, i) => (
+                          <img key={i} src={cover} alt="" className="w-full h-full object-cover" />
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center">
+                        <PlaylistIcon className="w-8 h-8 text-outline" />
+                      </div>
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         </aside>
 
-        <main className="flex-1 ml-20 md:ml-[280px] relative h-[calc(100vh-3.5rem)] overflow-y-auto pb-20 md:pb-24 p-3 md:p-8 border-t border-white/[0.03]">
+        <main className="flex-1 relative h-[calc(100vh-3.5rem)] overflow-y-auto pb-20 md:pb-24 p-3 md:p-8 border-t border-white/[0.03]" style={{ marginLeft: sidebarWidth }}>
           <div className="fixed inset-0 pointer-events-none z-[-1] opacity-40 mix-blend-overlay" style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg viewBox=\'0 0 200 200\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cfilter id=\'noiseFilter\'%3E%3CfeTurbulence type=\'fractalNoise\' baseFrequency=\'0.85\' numOctaves=\'3\' stitchTiles=\'stitch\'/%3E%3C/filter%3E%3Crect width=\'100%25\' height=\'100%25\' filter=\'url(%23noiseFilter)\'/%3E%3C/svg%3E")'}}></div>
           <div className="fixed inset-0 bg-gradient-to-br from-primary/5 via-transparent to-secondary-container/5 pointer-events-none z-[-1]"></div>
           <div className="absolute top-0 right-0 w-[600px] h-[600px] bg-primary/5 rounded-full blur-[150px] pointer-events-none z-[-1]"></div>
@@ -1290,6 +1622,8 @@ useEffect(() => { if (libraryPath) { loadLibrary(); setTimeout(() => setIsLoadin
                 playlistCover={currentPlaylist?.cover}
                 sortBy={sortBy}
                 onSortBy={setSortBy}
+                allPlaylists={playlists}
+                onSelectPlaylist={handleSelectPlaylist}
               />
             )}
             {currentView === "playlists" && (
