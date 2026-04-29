@@ -144,8 +144,8 @@ function saveToStorage(key: string, value: unknown): void {
   }
 }
 
-function SearchPage({ onPlayTrack }: { onPlayTrack: (track: Track) => void }) {
-  const [query, setQuery] = useState("");
+function SearchPage({ onPlayTrack, initialQuery }: { onPlayTrack: (track: Track) => void; initialQuery?: string }) {
+  const [query, setQuery] = useState(initialQuery || "");
   const [urlInput, setUrlInput] = useState("");
   const [results, setResults] = useState<YouTubeTrack[]>([]);
   const [loading, setLoading] = useState(false);
@@ -984,6 +984,7 @@ function App() {
   const [favorites, setFavorites] = useState<Favorite[]>(() => loadFromStorage(STORAGE_KEYS.favorites, []));
   const [history, setHistory] = useState<PlaybackHistory[]>(() => loadToStorage(STORAGE_KEYS.history, []));
   const loudnessMap = new Map<number, number>();
+  const analyzingRef = useRef<Set<number>>(new Set());
   const [trackLoudness, setTrackLoudness] = useState(loudnessMap);
   const [sortBy, setSortBy] = useState<"title" | "artist" | "album" | "duration">("title");
   const [gaplessEnabled, setGaplessEnabled] = useState(true);
@@ -1004,6 +1005,17 @@ function App() {
     };
     loadCovers();
   }, [playlists]);
+  
+  const [sidebarBg, setSidebarBg] = useState('rgba(14, 14, 14, 1)');
+  useEffect(() => {
+    if (currentTrack?.cover) {
+      getAverageColor(currentTrack.cover).then(color => {
+        setSidebarBg(color);
+      });
+    } else {
+      setSidebarBg('rgba(14, 14, 14, 1)');
+    }
+  }, [currentTrack?.cover]);
   
   const EQ_PRESETS: Record<string, number[]> = {
     "Flat": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
@@ -1285,13 +1297,17 @@ function App() {
       } catch (e) { console.error("Failed to load metadata:", e); }
     }
     
-    if (normEnabled && !trackLoudness.has(updatedTrack.id)) {
+    if (normEnabled && !trackLoudness.has(updatedTrack.id) && !analyzingRef.current.has(updatedTrack.id)) {
+      analyzingRef.current.add(updatedTrack.id);
       try {
         const loudness = await invoke<{ integrated_lufs: number; true_peak_dbtp: number; gain_db: number } | null>("get_track_loudness", { path: updatedTrack.path });
         if (loudness) {
           setTrackLoudness(prev => new Map(prev).set(updatedTrack.id, loudness.gain_db));
         }
       } catch (e) { console.error("Failed to load loudness:", e); }
+      finally {
+        analyzingRef.current.delete(updatedTrack.id);
+      }
     }
     
     setCurrentTrack(updatedTrack);
@@ -1348,7 +1364,14 @@ function App() {
     if (!currentTrack) return;
     const sorted = getSortedTracks();
     const currentIndex = sorted.findIndex(t => t.id === currentTrack.id);
-    const nextIndex = shuffleEnabled ? Math.floor(Math.random() * sorted.length) : (currentIndex + 1) % sorted.length;
+    let nextIndex: number;
+    if (shuffleEnabled) {
+      do {
+        nextIndex = Math.floor(Math.random() * sorted.length);
+      } while (sorted.length > 1 && nextIndex === currentIndex);
+    } else {
+      nextIndex = (currentIndex + 1) % sorted.length;
+    }
     if (sorted[nextIndex]) playTrack(sorted[nextIndex]);
   };
 
@@ -1580,7 +1603,7 @@ function App() {
       <audio 
           ref={audioRef} 
           crossOrigin="anonymous"
-          onEnded={() => { if (!shuffleEnabled) nextTrack(); else { const s = getSortedTracks(); const i = Math.floor(Math.random() * s.length); if(s[i]) playTrack(s[i]); } }}
+          onEnded={() => nextTrack()}
         />
       
       {miniPlayerEnabled && currentTrack && (
@@ -1825,7 +1848,7 @@ function App() {
               />
             )}
             {currentView === "search" && (
-              <SearchPage onPlayTrack={playTrack} />
+              <SearchPage onPlayTrack={playTrack} initialQuery={searchQuery} />
             )}
             {currentView === "settings" && (
               <SettingsPage 
@@ -1852,8 +1875,8 @@ function App() {
         </main>
         
         <aside 
-          className="fixed right-0 top-[56px] h-[calc(100vh-56px-6rem)] bg-surface-container-lowest/95 border-l border-white/[0.03] flex flex-col z-40 shadow-[-10px_0_30px_-5px_rgba(0,0,0,0.8)]"
-          style={{ width: rightSidebarWidth }}
+          className="fixed right-0 top-[56px] h-[calc(100vh-56px-6rem)] border-l border-white/[0.03] flex flex-col z-40 shadow-[-10px_0_30px_-5px_rgba(0,0,0,0.8)]"
+          style={{ width: rightSidebarWidth, background: `linear-gradient(180deg, ${sidebarBg} 0%, rgba(14, 14, 14, 1) 100%)` }}
         >
           <div 
             className="absolute left-0 top-0 w-1 h-full cursor-ew-resize hover:bg-primary/50"
@@ -1881,7 +1904,7 @@ function App() {
             {currentTrack ? (
               <div className="flex flex-col h-full overflow-hidden">
                 <div className="text-center mb-3">
-                  <div className="text-sm text-outline font-medium">{currentTrack.artist}</div>
+                  <button onClick={() => setSearchQuery(currentTrack.artist)} className="text-sm text-outline font-medium hover:text-primary transition-colors">{currentTrack.artist}</button>
                 </div>
                 
                 <div className="w-full aspect-square rounded-xl overflow-hidden shadow-[0_8px_30px_rgba(0,0,0,0.5)] mb-4 bg-surface-container shrink-0">
@@ -1896,7 +1919,7 @@ function App() {
                 
                 <div className="text-center mb-3 shrink-0">
                   <div className="text-base font-semibold text-on-surface mb-1 truncate px-2">{currentTrack.title}</div>
-                  <div className="text-sm text-outline">{currentTrack.artist}</div>
+                  <button onClick={() => setSearchQuery(currentTrack.artist)} className="text-sm text-outline hover:text-primary transition-colors">{currentTrack.artist}</button>
                 </div>
                 
                 <div className="flex-1 overflow-y-auto space-y-2 text-xs text-outline">
