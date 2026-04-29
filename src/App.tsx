@@ -113,7 +113,6 @@ export interface Playlist {
   track_count: number;
   cover?: string;
   trackCovers?: string[];
-  customCover?: string;
 }
 
 interface Favorite {
@@ -884,21 +883,12 @@ function App() {
   const [playlistCovers, setPlaylistCovers] = useState<Record<string, string[]>>(() => loadFromStorage("alora_playlistCovers", {}));
   const [rightSidebarBg, setRightSidebarBg] = useState<string>('rgba(14, 14, 14, 1)');
   
-  useEffect(() => {
-    saveToStorage("alora_playlistCovers", playlistCovers);
-  }, [playlistCovers]);
-  
   const [tracks, setTracks] = useState<Track[]>(() => loadFromStorage(STORAGE_KEYS.tracks, []));
   const [playlists, setPlaylists] = useState<Playlist[]>(() => loadFromStorage(STORAGE_KEYS.playlists, []));
   
 useEffect(() => {
     const loadCovers = async () => {
       for (const playlist of playlists) {
-        if (playlist.customCover) {
-          setPlaylistCovers(prev => ({ ...prev, [playlist.path]: [playlist.customCover!] }));
-          continue;
-        }
-        
         try {
           const entries = await readDir(playlist.path);
           let folderCover: string | undefined;
@@ -920,11 +910,6 @@ useEffect(() => {
           }
           if (folderCover) {
             setPlaylistCovers(prev => ({ ...prev, [playlist.path]: [folderCover] }));
-            setPlaylists(prev => {
-              const updated = prev.map(p => p.path === playlist.path ? { ...p, customCover: folderCover } : p);
-              saveToStorage(STORAGE_KEYS.playlists, updated);
-              return updated;
-            });
             continue;
           }
         } catch {}
@@ -1180,8 +1165,7 @@ useEffect(() => {
               name, 
               path: fullPath, 
               track_count: trackCount,
-              cover: generatedCover || undefined,
-              customCover: folderCover
+              cover: generatedCover || undefined
             });
           } catch { 
             playlists.push({ id: playlistId++, name, path: fullPath, track_count: 0 }); 
@@ -1442,20 +1426,22 @@ useEffect(() => {
       
       const updatedPlaylist = { 
         ...playlist, 
-        cover: generatedCover || playlist.cover, 
-        track_count: newTracks.length,
-        customCover: folderCover || playlist.customCover
+        cover: folderCover || generatedCover || playlist.cover, 
+        track_count: newTracks.length
       };
       
       setPlaylists(prev => {
         const updated = prev.map(p => p.path === playlist.path ? updatedPlaylist : p);
-        saveToStorage(STORAGE_KEYS.playlists, updated);
         return updated;
       });
       
+      if (folderCover) {
+        setPlaylistCovers(prev => ({ ...prev, [playlist.path]: [folderCover] }));
+      }
+      
       setTracks(newTracks);
       setCurrentView("library");
-      setCurrentPlaylist(playlist);
+      setCurrentPlaylist(updatedPlaylist);
       
       setTimeout(async () => {
         for (const track of newTracks) {
@@ -1752,7 +1738,7 @@ useEffect(() => {
                 onToggleFavorite={toggleFavorite}
                 history={history}
                 playlistName={currentPlaylist?.name}
-                playlistCover={currentPlaylist?.customCover || currentPlaylist?.cover}
+                playlistCover={currentPlaylist?.cover}
                 sortBy={sortBy}
                 onSortBy={setSortBy}
                 allPlaylists={playlists}
@@ -1795,13 +1781,13 @@ useEffect(() => {
         >
           <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-surface-container-lowest/95 pointer-events-none" />
           <div 
-            className="absolute left-0 top-0 w-1 h-full cursor-ew-resize hover:bg-primary/50"
+            className="absolute left-0 top-0 w-1 h-full cursor-ew-resize hover:bg-primary/50 z-50"
             onMouseDown={(e) => {
               e.preventDefault();
               const startX = e.clientX;
               const startWidth = rightSidebarWidth;
               const onMouseMove = (moveEvent: MouseEvent) => {
-                const newWidth = Math.max(200, Math.min(500, startWidth - (moveEvent.clientX - startX)));
+                const newWidth = Math.max(200, Math.min(600, startWidth - (moveEvent.clientX - startX)));
                 setRightSidebarWidth(newWidth);
               };
               const onMouseUp = () => {
@@ -1956,7 +1942,7 @@ useEffect(() => {
             <button onClick={toggleMute} className="text-white/60 hover:text-primary transition-colors p-1" title="Volume">
               {volume === 0 ? <VolumeX className="w-3 h-4 md:w-4 md:h-4" /> : <Volume2 className="w-3 h-4 md:w-4 md:h-4" />}
             </button>
-            <input type="range" min="0" max="100" value={volume} onChange={handleVolumeChange} className="flex-1 h-1 md:h-1.5 rounded-full appearance-none cursor-pointer" style={{ background: `linear-gradient(to right, #f7bd48 0%, #f7bd48 ${volume}%, rgba(255,255,255,0.1) ${volume}%, rgba(255,255,255,0.1) 100%)`, WebkitAppearance: 'none' }} />
+            <input type="range" min="0" max="100" value={volume} onChange={handleVolumeChange} className="w-20 md:w-24 h-1 md:h-1.5 rounded-full appearance-none cursor-pointer" style={{ background: `linear-gradient(to right, #f7bd48 0%, #f7bd48 ${volume}%, rgba(255,255,255,0.1) ${volume}%, rgba(255,255,255,0.1) 100%)`, WebkitAppearance: 'none' }} />
           </div>
 </div>
         </footer>
