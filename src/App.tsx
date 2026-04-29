@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import { set } from 'idb-keyval';
 import { open } from "@tauri-apps/plugin-dialog";
-import { readDir, readFile } from "@tauri-apps/plugin-fs";
+import { readDir } from "@tauri-apps/plugin-fs";
 import { invoke } from "@tauri-apps/api/core";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -9,40 +10,12 @@ import {
   Play, Pause, SkipBack, SkipForward, Shuffle, Repeat,
   Heart, Mic, ListMusic, Volume2, VolumeX,
   ChevronLeft, ChevronRight, Search, Minus, Square, X,
-  Home, Folder, Heart as HeartFilled, Plus, Trash2, Maximize2, MoreHorizontal,
-  Download, Loader2
+  Home, Folder, Heart as HeartFilled, Plus, Trash2, Maximize2, MoreHorizontal, Download, Loader2
 } from "lucide-react";
 import NowPlayingOverlay from "./NowPlayingOverlay";
+import MiniPlayer from "./MiniPlayer";
 
-function generatePlaylistCover(tracks: Track[]): string | null {
-  const tracksWithCover = tracks.filter(t => t.cover && t.cover.startsWith('data:')).slice(0, 4);
-  if (tracksWithCover.length === 0) return null;
-  
-  const canvas = document.createElement('canvas');
-  const size = 200;
-  canvas.width = size;
-  canvas.height = size;
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return null;
-  
-  const cols = 2;
-  const rows = 2;
-  const cellW = size / cols;
-  const cellH = size / rows;
-  
-  ctx.fillStyle = '#1a1a1a';
-  ctx.fillRect(0, 0, size, size);
-  
-  tracksWithCover.forEach((track, i) => {
-    const img = new Image();
-    img.src = track.cover!;
-    const col = i % cols;
-    const row = Math.floor(i / cols);
-    ctx.drawImage(img, col * cellW, row * cellH, cellW, cellH);
-  });
-  
-  return canvas.toDataURL('image/jpeg', 0.7);
-}
+
 
 function getAverageColor(imageSrc: string): Promise<string> {
   return new Promise((resolve) => {
@@ -85,17 +58,20 @@ function darkenColor(color: string, amount: number): string {
 }
 
 const MUSIC_EXTENSIONS = ['.mp3', '.flac', '.wav', '.m4a', '.ogg', '.aac', '.wma', '.aiff'];
-const COVER_EXTENSIONS = ['cover.jpg', 'folder.jpg', 'album.jpg', 'front.jpg', 'cover.png', 'folder.png', 'album.png', 'front.png', 'cover.jpeg', 'folder.jpeg', 'album.jpeg', 'front.jpeg'];
 
 const isMusicFile = (filename: string): boolean => {
   const ext = filename.toLowerCase();
   return MUSIC_EXTENSIONS.some(e => ext.endsWith(e));
 };
 
-const isImageFile = (filename: string): boolean => {
-  const name = filename.toLowerCase();
-  return COVER_EXTENSIONS.some(e => name === e) || name.match(/^(cover|folder|album|front)\.(jpg|jpeg|png)$/i) !== null;
-};
+interface YouTubeTrack {
+  id: string;
+  title: string;
+  artist: string;
+  duration_secs: number;
+  thumbnail: string;
+  url: string;
+}
 
 export interface Track {
   id: number;
@@ -127,7 +103,9 @@ interface Favorite {
 }
 
 interface PlaybackHistory {
-  track: Track;
+  trackPath: string;
+  title: string;
+  artist: string;
   playedAt: number;
 }
 
@@ -142,41 +120,28 @@ const STORAGE_KEYS = {
   tracks: "alora_tracks",
 };
 
+async function saveToStorageAsync(key: string, value: unknown): Promise<void> {
+  try {
+    await set(key, value);
+  } catch (e) {
+    console.error("Failed to save to storage:", key, e);
+  }
+}
+
 function loadFromStorage<T>(key: string, defaultValue: T): T {
   try {
     const stored = localStorage.getItem(key);
-    if (stored) {
-      console.log("Loaded from storage:", key, "length:", stored.length);
-      return JSON.parse(stored);
-    }
+    if (stored) return JSON.parse(stored);
     return defaultValue;
-  } catch (e) {
-    console.error("Failed to load from storage:", key, e);
-    return defaultValue;
-  }
+  } catch { return defaultValue; }
 }
 
 function saveToStorage(key: string, value: unknown): void {
   try {
-    const json = JSON.stringify(value);
-    if (key === STORAGE_KEYS.history && json.length > 100000) return;
-    if (json.length > 5000000) return;
-    console.log("Saving to storage:", key, "length:", json.length);
-    localStorage.setItem(key, json);
+    localStorage.setItem(key, JSON.stringify(value));
   } catch (e) {
-    if (e instanceof DOMException && e.name === 'QuotaExceededError') {
-      console.error("Storage quota exceeded");
-    }
+    console.error("Failed to save to storage:", e);
   }
-}
-
-interface YouTubeTrack {
-  id: string;
-  title: string;
-  artist: string;
-  duration_secs: number;
-  thumbnail: string;
-  url: string;
 }
 
 function SearchPage({ onPlayTrack }: { onPlayTrack: (track: Track) => void }) {
@@ -185,7 +150,6 @@ function SearchPage({ onPlayTrack }: { onPlayTrack: (track: Track) => void }) {
   const [results, setResults] = useState<YouTubeTrack[]>([]);
   const [loading, setLoading] = useState(false);
   const [downloading, setDownloading] = useState<string | null>(null);
-  const [error, setError] = useState("");
 
   const handleDownloadUrl = async () => {
     if (!urlInput.trim()) return;
@@ -193,45 +157,36 @@ function SearchPage({ onPlayTrack }: { onPlayTrack: (track: Track) => void }) {
     try {
       const downloadPath = "E:\\onyx\\lib\\downloads";
       const result = await invoke<string>("download_youtube", { url: urlInput.trim(), outputDir: downloadPath });
-      setError("");
       setUrlInput("");
       alert("Downloaded: " + result);
     } catch (e) {
-      console.error("Download failed:", e);
-      setError("Download failed: " + e);
-    } finally {
-      setDownloading(null);
+      alert("Error: " + e);
     }
+    setDownloading(null);
   };
 
   const handleSearch = async () => {
     if (!query.trim()) return;
-    
     setLoading(true);
-    setError("");
-    
     try {
       const searchResults = await invoke<YouTubeTrack[]>("search_youtube", { query: query.trim() });
       setResults(searchResults);
     } catch (e) {
       console.error("Search failed:", e);
-      setError("Search failed. Make sure yt-dlp is installed.");
-    } finally {
-      setLoading(false);
     }
+    setLoading(false);
   };
 
   const handlePlay = (track: YouTubeTrack) => {
-    const newTrack: Track = {
-      id: parseInt(track.id.slice(-8), 16) || Date.now(),
+    onPlayTrack({
+      id: Date.now(),
       path: track.url,
       title: track.title,
       artist: track.artist,
       album: 'YouTube',
       duration: track.duration_secs,
-      cover: track.thumbnail || undefined
-    };
-    onPlayTrack(newTrack);
+      cover: track.thumbnail
+    });
   };
 
   const handleDownload = async (track: YouTubeTrack) => {
@@ -239,78 +194,60 @@ function SearchPage({ onPlayTrack }: { onPlayTrack: (track: Track) => void }) {
     try {
       const downloadPath = "E:\\onyx\\lib\\downloads";
       await invoke<string>("download_youtube", { url: track.url, outputDir: downloadPath });
+      alert("Downloaded: " + track.title);
     } catch (e) {
-      console.error("Download failed:", e);
-      setError("Download failed: " + e);
-    } finally {
-      setDownloading(null);
+      alert("Error: " + e);
     }
+    setDownloading(null);
   };
 
   return (
-    <div className="p-8 max-w-4xl mx-auto">
+    <div className="p-8">
       <h2 className="text-2xl font-bold text-white mb-6">YouTube Music</h2>
       
-      <div className="mb-6 p-4 bg-surface-container-high rounded-lg">
-        <h3 className="text-white font-medium mb-3">Download by URL</h3>
-        <div className="flex gap-3">
-          <input 
-            type="text"
+      <div className="mb-6 space-y-4">
+        <div className="flex gap-2">
+          <input
             value={urlInput}
             onChange={(e) => setUrlInput(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && handleDownloadUrl()}
             placeholder="YouTube URL..."
-            className="flex-1 px-4 py-2 bg-surface rounded-lg text-white placeholder-text-outline focus:outline-none focus:ring-2 focus:ring-primary"
+            className="flex-1 bg-surface-container-high text-white px-4 py-2 rounded-lg border border-surface-container-high focus:border-primary outline-none"
           />
-          <button 
+          <button
             onClick={handleDownloadUrl}
-            disabled={downloading === "url"}
-            className="px-4 py-2 bg-green-500 text-white rounded-lg font-medium hover:opacity-90 disabled:opacity-50"
+            disabled={downloading === "url" || !urlInput.trim()}
+            className="px-4 py-2 bg-primary text-on-primary rounded-lg hover:opacity-90 disabled:opacity-50"
           >
             {downloading === "url" ? "Downloading..." : "Download"}
           </button>
         </div>
+        
+        <div className="flex gap-2">
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search YouTube..."
+            onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+            className="flex-1 bg-surface-container-high text-white px-4 py-2 rounded-lg border border-surface-container-high focus:border-primary outline-none"
+          />
+          <button
+            onClick={handleSearch}
+            disabled={loading || !query.trim()}
+            className="px-4 py-2 bg-primary text-on-primary rounded-lg hover:opacity-90 disabled:opacity-50"
+          >
+            {loading ? "Searching..." : "Search"}
+          </button>
+        </div>
       </div>
-      
-      <div className="flex gap-3 mb-8">
-        <input 
-          type="text"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-          placeholder="Search YouTube..."
-          className="flex-1 px-4 py-3 bg-surface-container-high rounded-lg text-white placeholder-text-outline focus:outline-none focus:ring-2 focus:ring-primary"
-        />
-        <button 
-          onClick={handleSearch}
-          disabled={loading}
-          className="px-6 py-3 bg-primary text-black rounded-lg font-medium hover:opacity-90 disabled:opacity-50"
-        >
-          {loading ? "Searching..." : "Search"}
-        </button>
-      </div>
-
-      {error && (
-        <div className="text-red-400 mb-4">{error}</div>
-      )}
 
       <div className="space-y-2">
         {results.map((track) => (
-          <div 
+          <div
             key={track.id}
-            className="flex items-center gap-4 p-3 bg-surface-container-high rounded-lg hover:bg-surface-container-high/80 cursor-pointer group"
+            className="flex items-center gap-4 p-3 bg-surface-container-high rounded-lg hover:bg-surface-container-low transition-colors group"
           >
-            <div className="w-12 h-12 bg-surface-container rounded overflow-hidden shrink-0 relative" onClick={() => handlePlay(track)}>
-              {track.thumbnail ? (
-                <img src={track.thumbnail} alt="" className="w-full h-full object-cover" />
-              ) : (
-                <div className="w-full h-full flex items-center justify-center bg-surface">
-                  <Music className="w-6 h-6 text-outline" />
-                </div>
-              )}
-              <div className="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity">
-                <Play className="w-8 h-8 text-white" fill="white" />
-              </div>
+            <div className="w-12 h-12 rounded overflow-hidden shrink-0 bg-surface-container">
+              {track.thumbnail && <img src={track.thumbnail} alt="" className="w-full h-full object-cover" />}
             </div>
             <div className="flex-1 min-w-0" onClick={() => handlePlay(track)}>
               <div className="text-white font-medium truncate group-hover:text-primary">{track.title}</div>
@@ -334,17 +271,11 @@ function SearchPage({ onPlayTrack }: { onPlayTrack: (track: Track) => void }) {
           </div>
         ))}
       </div>
-
-      {results.length === 0 && !loading && query && (
-        <div className="text-center text-outline mt-8">
-          No results found. Make sure yt-dlp is installed.
-        </div>
-      )}
     </div>
   );
 }
 
-function SettingsPage({ libraryPath, setLibraryPath, onSave, gaplessEnabled, setGaplessEnabled, normEnabled, setNormEnabled, eqEnabled, setEqEnabled, eqPreset, setEqPreset, eqBands, setEqBands, EQ_PRESETS, EQ_FREQUENCIES }: { 
+function SettingsPage({ libraryPath, setLibraryPath, onSave, gaplessEnabled, setGaplessEnabled, normEnabled, setNormEnabled, miniPlayerEnabled, setMiniPlayerEnabled }: { 
   libraryPath: string; 
   setLibraryPath: (path: string) => void;
   onSave: () => void;
@@ -352,14 +283,8 @@ function SettingsPage({ libraryPath, setLibraryPath, onSave, gaplessEnabled, set
   setGaplessEnabled: (v: boolean) => void;
   normEnabled: boolean;
   setNormEnabled: (v: boolean) => void;
-  eqEnabled: boolean;
-  setEqEnabled: (v: boolean) => void;
-  eqPreset: string;
-  setEqPreset: (v: string) => void;
-  eqBands: number[];
-  setEqBands: (v: number[]) => void;
-  EQ_PRESETS: Record<string, number[]>;
-  EQ_FREQUENCIES: number[];
+  miniPlayerEnabled: boolean;
+  setMiniPlayerEnabled: (v: boolean) => void;
 }) {
   const [activeTab, setActiveTab] = useState("general");
   const [startupEnabled, setStartupEnabled] = useState(false);
@@ -497,61 +422,17 @@ function SettingsPage({ libraryPath, setLibraryPath, onSave, gaplessEnabled, set
                     <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform ${gaplessEnabled ? "right-1" : "left-1"}`}></div>
                   </button>
                 </div>
-                
-                <div className="border-t border-white/10 pt-4 mt-4">
-                  <div className="flex items-center justify-between mb-4">
-                    <div>
-                      <div className="text-on-surface">Equalizer</div>
-                      <div className="text-outline text-sm">Adjust audio frequencies</div>
-                    </div>
-                    <button 
-                      onClick={() => setEqEnabled(!eqEnabled)}
-                      className={`w-12 h-6 rounded-full relative transition-colors ${eqEnabled ? "bg-primary-container" : "bg-surface-container-high"}`}
-                    >
-                      <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform ${eqEnabled ? "right-1" : "left-1"}`}></div>
-                    </button>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-on-surface">Mini Player</div>
+                    <div className="text-outline text-sm">Floating player at bottom right</div>
                   </div>
-                  
-                  {eqEnabled && (
-                    <div className="space-y-4">
-                      <div className="flex flex-wrap gap-2">
-                        {Object.keys(EQ_PRESETS).map((preset) => (
-                          <button
-                            key={preset}
-                            onClick={() => { setEqPreset(preset); setEqBands(EQ_PRESETS[preset]); }}
-                            className={`px-3 py-1 rounded-full text-xs capitalize ${
-                              eqPreset === preset ? "bg-primary text-black" : "bg-surface-container-high text-on-surface"
-                            }`}
-                          >
-                            {preset}
-                          </button>
-                        ))}
-                      </div>
-                      
-                      <div className="flex justify-between gap-2">
-                        {eqBands.map((value, index) => (
-                          <div key={index} className="flex flex-col items-center">
-                            <input
-                              type="range"
-                              min="-12"
-                              max="12"
-                              value={value}
-                              onChange={(e) => {
-                                const newBands = [...eqBands];
-                                newBands[index] = parseInt(e.target.value);
-                                setEqBands(newBands);
-                                setEqPreset("custom");
-                              }}
-                              className="h-32 w-4 -rotate-180 accent-primary"
-                              style={{ writingMode: 'vertical-lr', direction: 'rtl' }}
-                            />
-                            <span className="text-[10px] text-outline mt-1">{value > 0 ? `+${value}` : value}</span>
-                            <span className="text-[8px] text-outline">{EQ_FREQUENCIES[index] >= 1000 ? `${EQ_FREQUENCIES[index]/1000}k` : EQ_FREQUENCIES[index]}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
+                  <button 
+                    onClick={() => setMiniPlayerEnabled(!miniPlayerEnabled)}
+                    className={`w-12 h-6 rounded-full relative transition-colors ${miniPlayerEnabled ? "bg-primary-container" : "bg-surface-container-high"}`}
+                  >
+                    <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform ${miniPlayerEnabled ? "right-1" : "left-1"}`}></div>
+                  </button>
                 </div>
               </div>
             </div>
@@ -597,8 +478,9 @@ function SettingsPage({ libraryPath, setLibraryPath, onSave, gaplessEnabled, set
   );
 }
 
-function PlaylistsPage({ playlists, onSelectPlaylist, onCreatePlaylist, onEditPlaylist }: { 
+function PlaylistsPage({ playlists, playlistCovers, onSelectPlaylist, onCreatePlaylist, onEditPlaylist }: { 
   playlists: Playlist[];
+  playlistCovers: Record<number, string>;
   onSelectPlaylist: (playlist: Playlist) => void;
   onCreatePlaylist: () => void;
   onEditPlaylist: (playlist: Playlist) => void;
@@ -619,8 +501,8 @@ function PlaylistsPage({ playlists, onSelectPlaylist, onCreatePlaylist, onEditPl
         {playlists.map((playlist) => (
           <div key={playlist.id} className="group relative glass-panel rounded-xl p-4 hover:bg-white/10 transition-colors">
             <button onClick={() => onSelectPlaylist(playlist)} className="w-full text-left">
-              <div className={`aspect-square rounded-lg mb-4 group-hover:scale-[1.02] transition-transform duration-300 flex items-center justify-center overflow-hidden ${playlist.cover?.startsWith('data:') ? '' : 'bg-gradient-to-br ' + (playlist.cover || 'from-primary/20 to-secondary-container/20')}`}>
-                {playlist.cover?.startsWith('data:') ? <img src={playlist.cover} alt="" className="w-full h-full object-cover" /> : <PlaylistIcon className="w-12 h-12 text-white/50" />}
+              <div className={`aspect-square rounded-lg mb-4 group-hover:scale-[1.02] transition-transform duration-300 flex items-center justify-center overflow-hidden ${playlistCovers[playlist.id] ? '' : 'bg-gradient-to-br from-primary/20 to-secondary-container/20'}`}>
+                {playlistCovers[playlist.id] ? <img src={playlistCovers[playlist.id]} alt="" className="w-full h-full object-cover" /> : <PlaylistIcon className="w-12 h-12 text-white/50" />}
               </div>
               <div className="text-sm font-medium text-on-surface truncate">{playlist.name}</div>
               <div className="text-[11px] text-outline">{playlist.track_count} tracks</div>
@@ -650,8 +532,8 @@ function LibraryPage({
   sortBy,
   onSortBy,
   allPlaylists,
-  onSelectPlaylist,
   playlistCovers,
+  onSelectPlaylist,
 }: { 
   tracks: Track[];
   currentTrack: Track | null;
@@ -667,8 +549,8 @@ function LibraryPage({
   sortBy: "title" | "artist" | "album" | "duration";
   onSortBy: (sort: "title" | "artist" | "album" | "duration") => void;
   allPlaylists?: Playlist[];
+  playlistCovers?: Record<number, string>;
   onSelectPlaylist?: (playlist: Playlist) => void;
-  playlistCovers?: Record<string, string[]>;
 }) {
   const [bgColor, setBgColor] = useState<string>('rgba(26, 26, 26, 1)');
   
@@ -697,7 +579,7 @@ function LibraryPage({
   });
   
 if (!playlistName && allPlaylists && allPlaylists.length > 0) {
-    const recentPlaylistPaths = new Set(history.slice(0, 10).map(h => h.track.path.split('\\').slice(0, -1).join('\\')));
+    const recentPlaylistPaths = new Set(history.slice(0, 10).filter(h => h.trackPath).map(h => h.trackPath.split('\\').slice(0, -1).join('\\')));
     const recentPlaylists = allPlaylists.filter(p => recentPlaylistPaths.has(p.path));
     const otherPlaylists = allPlaylists.filter(p => !recentPlaylistPaths.has(p.path));
     
@@ -716,8 +598,8 @@ if (!playlistName && allPlaylists && allPlaylists.length > 0) {
                   className="group text-left p-4 rounded-xl bg-surface-container hover:bg-surface-container-high transition-colors"
                 >
                   <div className="aspect-square rounded-lg overflow-hidden bg-surface-container-high mb-3 shadow-lg group-hover:scale-[1.02] transition-transform">
-                    {playlistCovers?.[playlist.path]?.[0] ? (
-                      <img src={playlistCovers[playlist.path][0]} alt="" className="w-full h-full object-cover" />
+                    {playlistCovers?.[playlist.id] ? (
+                      <img src={playlistCovers[playlist.id]} alt="" className="w-full h-full object-cover" />
                     ) : (
                       <div className="w-full h-full bg-gradient-to-br from-surface-container-high to-surface flex items-center justify-center">
                         <PlaylistIcon className="w-10 h-10 text-white/30" />
@@ -744,8 +626,8 @@ if (!playlistName && allPlaylists && allPlaylists.length > 0) {
                 className="group text-left"
               >
                 <div className="aspect-square rounded-lg overflow-hidden bg-surface-container-high mb-3 shadow-lg group-hover:scale-[1.02] transition-transform">
-                  {playlistCovers?.[playlist.path]?.[0] ? (
-                    <img src={playlistCovers[playlist.path][0]} alt="" className="w-full h-full object-cover" />
+                  {playlistCovers?.[playlist.id] ? (
+                    <img src={playlistCovers[playlist.id]} alt="" className="w-full h-full object-cover" />
                   ) : (
                     <div className="w-full h-full bg-gradient-to-br from-surface-container-high to-surface flex items-center justify-center">
                       <PlaylistIcon className="w-16 h-16 text-white/30" />
@@ -774,7 +656,7 @@ if (!playlistName && allPlaylists && allPlaylists.length > 0) {
         
         <section className="relative z-10 flex gap-8 items-end">
           <div 
-            className="w-52 h-52 md:w-60 md:h-60 shrink-0 rounded-lg overflow-hidden shadow-[0_20px_60px_-15px_rgba(0,0,0,0.8)] group cursor-pointer relative"
+            className="w-52 h-52 md:w-60 md:h-60 shrink-0 rounded-lg overflow-hidden shadow-[0_20px_60px_-15px_rgba(0,0,0,0.8)] group cursor-pointer"
             onClick={onPlayAll}
           >
             {playlistCover?.startsWith('data:') ? (
@@ -966,31 +848,9 @@ function formatDuration(seconds: number): string {
   return `${mins}:${secs.toString().padStart(2, '0')}`;
 }
 
-function CreatePlaylistModal({ onClose, onCreate }: { onClose: () => void; onCreate: (name: string, cover: string) => void }) {
+function CreatePlaylistModal({ onClose, onCreate }: { onClose: () => void; onCreate: (name: string) => void }) {
   const [name, setName] = useState("");
-  const [coverColor, setCoverColor] = useState(0);
-  const [customCover, setCustomCover] = useState<string | null>(null);
   
-  const colors = [
-    "from-pink-500 to-purple-500",
-    "from-blue-500 to-cyan-500", 
-    "from-green-500 to-emerald-500",
-    "from-orange-500 to-red-500",
-    "from-indigo-500 to-blue-500",
-    "from-rose-500 to-pink-500",
-  ];
-
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-        if (ev.target?.result) setCustomCover(ev.target.result as string);
-      };
-      reader.readAsDataURL(file);
-    }
-  };
-
   return (
     <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center" onClick={onClose}>
       <div className="glass-panel rounded-2xl p-8 w-[420px] max-w-[90vw]" onClick={e => e.stopPropagation()}>
@@ -999,33 +859,12 @@ function CreatePlaylistModal({ onClose, onCreate }: { onClose: () => void; onCre
           <button onClick={onClose} className="text-outline hover:text-white transition-colors"><X className="w-5 h-5" /></button>
         </div>
         
-        <div className="flex flex-col items-center mb-6">
-          <div className="w-40 h-40 rounded-xl mb-4 flex items-center justify-center overflow-hidden bg-surface-container-high">
-            {customCover ? (
-              <img src={customCover} alt="" className="w-full h-full object-cover" />
-            ) : (
-              <div className={`w-full h-full bg-gradient-to-br ${colors[coverColor]} flex items-center justify-center`}>
-                <PlaylistIcon className="w-16 h-16 text-white/50" />
-              </div>
-            )}
-          </div>
-          <div className="flex gap-2 mb-2">
-            {colors.map((c, i) => (
-              <button key={i} onClick={() => { setCoverColor(i); setCustomCover(null); }} className={`w-8 h-8 rounded-full bg-gradient-to-br ${c} ${coverColor === i && !customCover ? 'ring-2 ring-white ring-offset-2 ring-offset-black' : ''}`} />
-            ))}
-          </div>
-          <label className="text-primary text-sm cursor-pointer hover:underline">
-            Upload Image
-            <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
-          </label>
-        </div>
-
         <div className="mb-6">
           <label className="text-outline text-sm mb-2 block">Playlist Name</label>
           <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="My Playlist" className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-3 text-white placeholder-outline focus:outline-none focus:border-primary" />
         </div>
 
-        <button onClick={() => name.trim() && onCreate(name.trim(), customCover || colors[coverColor])} disabled={!name.trim()} className="w-full py-3 bg-gradient-to-r from-primary to-purple-500 rounded-lg font-medium text-black disabled:opacity-50 disabled:cursor-not-allowed hover:opacity-90 transition-opacity">
+        <button onClick={() => name.trim() && onCreate(name.trim())} disabled={!name.trim()} className="w-full py-3 bg-gradient-to-r from-primary to-purple-500 rounded-lg font-medium text-black disabled:opacity-50 disabled:cursor-not-allowed hover:opacity-90 transition-opacity">
           Create Playlist
         </button>
       </div>
@@ -1035,56 +874,13 @@ function CreatePlaylistModal({ onClose, onCreate }: { onClose: () => void; onCre
 
 function EditPlaylistModal({ playlist, onClose, onSave, onDelete }: { playlist: Playlist; onClose: () => void; onSave: (updated: Playlist) => void; onDelete: () => void }) {
   const [name, setName] = useState(playlist.name);
-  const [coverColor, setCoverColor] = useState(0);
-  const [customCover, setCustomCover] = useState<string | null>(playlist.cover?.startsWith('data:') ? playlist.cover : null);
   
-  const colors = [
-    "from-pink-500 to-purple-500",
-    "from-blue-500 to-cyan-500", 
-    "from-green-500 to-emerald-500",
-    "from-orange-500 to-red-500",
-    "from-indigo-500 to-blue-500",
-    "from-rose-500 to-pink-500",
-  ];
-
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-        if (ev.target?.result) setCustomCover(ev.target.result as string);
-      };
-      reader.readAsDataURL(file);
-    }
-  };
-
   return (
     <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center" onClick={onClose}>
       <div className="glass-panel rounded-2xl p-8 w-[420px] max-w-[90vw]" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-xl font-bold text-white">Edit Playlist</h2>
           <button onClick={onClose} className="text-outline hover:text-white transition-colors"><X className="w-5 h-5" /></button>
-        </div>
-        
-        <div className="flex flex-col items-center mb-6">
-          <div className="w-40 h-40 rounded-xl mb-4 flex items-center justify-center overflow-hidden bg-surface-container-high">
-            {customCover ? (
-              <img src={customCover} alt="" className="w-full h-full object-cover" />
-            ) : (
-              <div className={`w-full h-full bg-gradient-to-br ${colors[coverColor]} flex items-center justify-center`}>
-                <PlaylistIcon className="w-16 h-16 text-white/50" />
-              </div>
-            )}
-          </div>
-          <div className="flex gap-2 mb-2">
-            {colors.map((c, i) => (
-              <button key={i} onClick={() => { setCoverColor(i); setCustomCover(null); }} className={`w-8 h-8 rounded-full bg-gradient-to-br ${c} ${coverColor === i && !customCover ? 'ring-2 ring-white ring-offset-2 ring-offset-black' : ''}`} />
-            ))}
-          </div>
-          <label className="text-primary text-sm cursor-pointer hover:underline">
-            Upload Image
-            <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
-          </label>
         </div>
 
         <div className="mb-6">
@@ -1096,7 +892,7 @@ function EditPlaylistModal({ playlist, onClose, onSave, onDelete }: { playlist: 
           <button onClick={onDelete} className="flex-1 py-3 bg-red-500/20 text-red-400 rounded-lg font-medium hover:bg-red-500/30 transition-colors">
             Delete
           </button>
-          <button onClick={() => name.trim() && onSave({ ...playlist, name: name.trim(), cover: customCover || colors[coverColor] })} disabled={!name.trim()} className="flex-1 py-3 bg-gradient-to-r from-primary to-purple-500 rounded-lg font-medium text-black disabled:opacity-50">
+          <button onClick={() => name.trim() && onSave({ ...playlist, name: name.trim() })} disabled={!name.trim()} className="flex-1 py-3 bg-gradient-to-r from-primary to-purple-500 rounded-lg font-medium text-black disabled:opacity-50">
             Save
           </button>
         </div>
@@ -1119,90 +915,10 @@ function App() {
   const [titlebarHeight, setTitlebarHeight] = useState(56);
   const [sidebarWidth, setSidebarWidth] = useState(280);
   const [rightSidebarWidth, setRightSidebarWidth] = useState(300);
-  const [playlistCovers, setPlaylistCovers] = useState<Record<string, string[]>>(() => loadFromStorage("alora_playlistCovers", {}));
-  const [rightSidebarBg, setRightSidebarBg] = useState<string>('rgba(14, 14, 14, 1)');
   
   const [tracks, setTracks] = useState<Track[]>(() => loadFromStorage(STORAGE_KEYS.tracks, []));
   const [playlists, setPlaylists] = useState<Playlist[]>(() => loadFromStorage(STORAGE_KEYS.playlists, []));
-  
-useEffect(() => {
-    const loadCovers = async () => {
-      for (const playlist of playlists) {
-        try {
-          const entries = await readDir(playlist.path);
-          let folderCover: string | undefined;
-          for (const entry of entries) {
-            if (!folderCover && isImageFile(entry.name)) {
-              try {
-                const imagePath = playlist.path + (playlist.path.endsWith('\\') ? '' : '\\') + entry.name;
-                const imageData = await readFile(imagePath);
-                let binary = '';
-                const bytes = new Uint8Array(imageData);
-                for (let i = 0; i < bytes.byteLength; i++) {
-                  binary += String.fromCharCode(bytes[i]);
-                }
-                const base64 = btoa(binary);
-                const ext = entry.name.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg';
-                folderCover = `data:${ext};base64,${base64}`;
-              } catch {}
-            }
-          }
-          if (folderCover) {
-            setPlaylistCovers(prev => ({ ...prev, [playlist.path]: [folderCover] }));
-            continue;
-          }
-        } catch {}
-        
-        const folderPath = playlist.path.substring(0, playlist.path.lastIndexOf('\\'));
-        const playlistTracks = tracks.filter(t => {
-          const trackFolder = t.path.substring(0, t.path.lastIndexOf('\\'));
-          return trackFolder === folderPath;
-        });
-        
-        const existingCovers = playlistTracks
-          .filter(t => t.cover && t.cover.startsWith('data:'))
-          .slice(0, 4)
-          .map(t => t.cover!);
-        
-        if (existingCovers.length > 0) {
-          setPlaylistCovers(prev => ({ ...prev, [playlist.path]: existingCovers }));
-          continue;
-        }
-        
-        const tracksToLoad = playlistTracks.slice(0, 4);
-        const loadedCovers: string[] = [];
-        
-        for (const track of tracksToLoad) {
-          if (!track.cover || track.artist === 'Unknown Artist') {
-            try {
-              const meta = await invoke<{ title: string; artist: string; album: string; duration: number; cover: string | null } | null>("get_audio_metadata", { path: track.path });
-              if (meta) {
-                setTracks(prev => prev.map(t => t.path === track.path ? { ...t, title: meta.title || t.title, artist: meta.artist || t.artist, album: meta.album || t.album, duration: meta.duration || t.duration, cover: meta.cover || t.cover } : t));
-                if (meta.cover) {
-                  loadedCovers.push(meta.cover);
-                  setPlaylistCovers(prev => ({ ...prev, [playlist.path]: [...(prev[playlist.path] || []), meta.cover!] }));
-                  if (loadedCovers.length >= 4) break;
-                }
-              }
-            } catch {}
-          }
-        }
-        
-        if (loadedCovers.length === 0) {
-          const updatedCovers = playlistTracks
-            .filter(t => t.cover && t.cover.startsWith('data:'))
-            .slice(0, 4)
-            .map(t => t.cover!);
-          if (updatedCovers.length > 0) {
-            setPlaylistCovers(prev => ({ ...prev, [playlist.path]: updatedCovers }));
-          }
-        }
-      }
-    };
-    if (playlists.length > 0 && tracks.length > 0) {
-      loadCovers();
-    }
-  }, [playlists.length, tracks.length]);
+  const [playlistCovers, setPlaylistCovers] = useState<Record<number, string>>({});
   const [currentTrack, setCurrentTrack] = useState<Track | null>(null);
   const [libraryPath, setLibraryPath] = useState(() => loadFromStorage(STORAGE_KEYS.libraryPath, "C:\\Music"));
   const [volume, setVolume] = useState(() => loadFromStorage(STORAGE_KEYS.volume, 5));
@@ -1211,39 +927,32 @@ useEffect(() => {
   const [repeatMode, setRepeatMode] = useState<"none" | "all" | "one">(() => loadFromStorage(STORAGE_KEYS.repeatMode, "none"));
   const [favorites, setFavorites] = useState<Favorite[]>(() => loadFromStorage(STORAGE_KEYS.favorites, []));
   const [history, setHistory] = useState<PlaybackHistory[]>(() => loadToStorage(STORAGE_KEYS.history, []));
-  const loudnessMap = new Map<string, number>();
+  const loudnessMap = new Map<number, number>();
   const [trackLoudness, setTrackLoudness] = useState(loudnessMap);
   const [sortBy, setSortBy] = useState<"title" | "artist" | "album" | "duration">("title");
-const [gaplessEnabled, setGaplessEnabled] = useState(true);
+  const [gaplessEnabled, setGaplessEnabled] = useState(true);
   const [normEnabled, setNormEnabled] = useState(() => loadFromStorage("alora_normEnabled", true));
+  const [miniPlayerEnabled, setMiniPlayerEnabled] = useState(() => loadFromStorage("alora_miniPlayerEnabled", false));
   const [showOverlay, setShowOverlay] = useState(false);
   
-  const [eqEnabled, setEqEnabled] = useState(() => loadFromStorage("alora_eqEnabled", false));
-  const [eqPreset, setEqPreset] = useState(() => loadFromStorage("alora_eqPreset", "flat"));
-  const [eqBands, setEqBands] = useState(() => loadFromStorage("alora_eqBands", [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]));
+  useEffect(() => {
+    const loadCovers = async () => {
+      const covers: Record<number, string> = {};
+      for (const playlist of playlists) {
+        try {
+          const cover = await invoke<string | null>("get_folder_cover", { path: playlist.path });
+          if (cover) covers[playlist.id] = cover;
+        } catch {}
+      }
+      setPlaylistCovers(covers);
+    };
+    loadCovers();
+  }, [playlists]);
   
-  const EQ_PRESETS: Record<string, number[]> = {
-    flat: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-    bass: [6, 5, 4, 2, 0, 0, 0, 0, 0, 0],
-    treble: [0, 0, 0, 0, 2, 4, 5, 6, 6, 6],
-    vocal: [-1, 0, 2, 4, 5, 5, 4, 2, 0, -1],
-    rock: [4, 3, 1, 0, -1, 0, 2, 4, 5, 5],
-    electronic: [4, 4, 1, -1, -2, 0, 2, 4, 5, 6],
-    classical: [0, 0, 0, 0, 0, -1, -2, -2, -1, 0],
-    jazz: [2, 1, 0, 1, -1, -1, 0, 1, 2, 3],
-  };
-  
-  const EQ_FREQUENCIES = [32, 64, 125, 250, 500, 1000, 2000, 4000, 8000, 16000];
-  
-setTrackLoudness;
-setGaplessEnabled;
-  setNormEnabled;
-  setEqEnabled;
-  setEqBands;
 
-  useEffect(() => { saveToStorage("alora_eqEnabled", eqEnabled); }, [eqEnabled]);
-  useEffect(() => { saveToStorage("alora_eqPreset", eqPreset); }, [eqPreset]);
-  useEffect(() => { saveToStorage("alora_eqBands", eqBands); }, [eqBands]);
+  setTrackLoudness;
+  setGaplessEnabled;
+  setNormEnabled;
 
   const navigateTo = (view: "library" | "playlists" | "favorites" | "settings" | "search") => {
     const newHistory = navHistory.slice(0, historyIndex + 1);
@@ -1268,84 +977,11 @@ setGaplessEnabled;
   };
   
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const audioContextRef = useRef<AudioContext | null>(null);
-  const audioSourceRef = useRef<MediaElementAudioSourceNode | null>(null);
-  const eqFiltersRef = useRef<BiquadFilterNode[]>([]);
-  const gainNodeRef = useRef<GainNode | null>(null);
   const progressInterval = useRef<number | null>(null);
-
-  const setupAudioWithEQ = useCallback(() => {
-    if (!audioRef.current || audioContextRef.current) return;
-    
-    try {
-      const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
-      audioContextRef.current = ctx;
-      
-      const source = ctx.createMediaElementSource(audioRef.current);
-      audioSourceRef.current = source;
-      
-      const filters: BiquadFilterNode[] = [];
-      let lastNode: AudioNode = source;
-      
-      const frequencies = [32, 64, 125, 250, 500, 1000, 2000, 4000, 8000, 16000];
-      for (let i = 0; i < 10; i++) {
-        const filter = ctx.createBiquadFilter();
-        filter.type = 'peaking';
-        filter.frequency.value = frequencies[i];
-        filter.Q.value = 1.4;
-        filter.gain.value = 0;
-        
-        lastNode.connect(filter);
-        lastNode = filter;
-        filters.push(filter);
-      }
-      
-      eqFiltersRef.current = filters;
-      
-      const gainNode = ctx.createGain();
-      gainNode.gain.value = 1;
-      gainNodeRef.current = gainNode;
-      
-      lastNode.connect(gainNode);
-      gainNode.connect(ctx.destination);
-    } catch (e) {
-      console.error("Failed to setup audio context:", e);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (eqFiltersRef.current.length === 10) {
-      eqFiltersRef.current.forEach((filter, i) => {
-        filter.gain.value = eqEnabled ? eqBands[i] : 0;
-      });
-    }
-  }, [eqBands, eqEnabled]);
-
-  useEffect(() => {
-    if (eqEnabled && audioRef.current && isPlaying && !audioContextRef.current) {
-      setupAudioWithEQ();
-    }
-  }, [eqEnabled, isPlaying, setupAudioWithEQ]);
-
-  useEffect(() => {
-    if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
-      audioContextRef.current.resume();
-    }
-  }, [currentTrack]);
 
   useEffect(() => {
     if (audioRef.current) audioRef.current.volume = volume / 100;
   }, [volume]);
-
-  useEffect(() => {
-    if (currentTrack?.cover) {
-      getAverageColor(currentTrack.cover).then(color => {
-        setRightSidebarBg(color);
-      });
-    } else {
-      setRightSidebarBg('rgba(14, 14, 14, 1)');
-    }
-  }, [currentTrack?.cover]);
   const nextTrackFnRef = useRef<(() => void) | null>(null);
   const prevTrackFnRef = useRef<(() => void) | null>(null);
 
@@ -1385,7 +1021,7 @@ setGaplessEnabled;
   useEffect(() => {
     if (audioRef.current) {
       if (isPlaying) {
-        audioRef.current.play().catch(e => { if (e.name !== 'AbortError') console.error(e) });
+        audioRef.current.play().catch(console.error);
         startProgressTracking();
       } else {
         audioRef.current.pause();
@@ -1395,8 +1031,8 @@ setGaplessEnabled;
   }, [isPlaying]);
 
   useEffect(() => {
-    if (audioRef.current && normEnabled && currentTrack?.path) {
-      const gainDb = trackLoudness.get(currentTrack.path);
+    if (audioRef.current && normEnabled && currentTrack?.id != null) {
+      const gainDb = trackLoudness.get(currentTrack.id);
       if (gainDb !== undefined && gainDb !== 0) {
         const volumeMultiplier = Math.pow(10, gainDb / 20);
         audioRef.current.volume = Math.min(1.0, (volume / 100) * volumeMultiplier);
@@ -1426,24 +1062,6 @@ setGaplessEnabled;
           try {
             const subEntries = await readDir(fullPath);
             const trackCount = subEntries.filter(e => isMusicFile(e.name)).length;
-            
-            let folderCover: string | undefined;
-            for (const subEntry of subEntries) {
-              if (!folderCover && isImageFile(subEntry.name)) {
-                try {
-                  const imagePath = fullPath + (fullPath.endsWith('\\') ? '' : '\\') + subEntry.name;
-                  const imageData = await readFile(imagePath);
-                  let binary = '';
-                  const bytes = new Uint8Array(imageData);
-                  for (let i = 0; i < bytes.byteLength; i++) {
-                    binary += String.fromCharCode(bytes[i]);
-                  }
-                  const base64 = btoa(binary);
-                  const ext = subEntry.name.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg';
-                  folderCover = `data:${ext};base64,${base64}`;
-                } catch {}
-              }
-            }
             
             const subTracks: Track[] = [];
             let subTrackId = Date.now();
@@ -1483,13 +1101,11 @@ setGaplessEnabled;
               }
             }
             
-            const generatedCover = generatePlaylistCover(subTracks);
             playlists.push({ 
               id: playlistId++, 
               name, 
               path: fullPath, 
-              track_count: trackCount,
-              cover: generatedCover || undefined
+              track_count: trackCount
             });
           } catch { 
             playlists.push({ id: playlistId++, name, path: fullPath, track_count: 0 }); 
@@ -1508,9 +1124,9 @@ setGaplessEnabled;
       }
       
       setTracks(newTracks);
-      saveToStorage(STORAGE_KEYS.tracks, newTracks);
+      saveToStorageAsync(STORAGE_KEYS.tracks, newTracks);
       setPlaylists(playlists);
-      saveToStorage(STORAGE_KEYS.playlists, playlists);
+      saveToStorageAsync(STORAGE_KEYS.playlists, playlists);
     } catch (e) { 
       console.error("Failed to load library:", e);
     }
@@ -1518,12 +1134,9 @@ setGaplessEnabled;
 
   const addToHistory = useCallback((track: Track) => {
     setHistory(prev => {
-      const filtered = prev.filter(h => h.track.path !== track.path);
-      const trackForHistory = { ...track, cover: undefined };
-      const updated = [{ track: trackForHistory, playedAt: Date.now() }, ...filtered].slice(0, 50);
-      try {
-        saveToStorage(STORAGE_KEYS.history, updated);
-      } catch {}
+      const filtered = prev.filter(h => h.trackPath !== track.path);
+      const updated = [{ trackPath: track.path, title: track.title, artist: track.artist, playedAt: Date.now() }, ...filtered].slice(0, 50);
+      saveToStorageAsync(STORAGE_KEYS.history, updated);
       return updated;
     });
   }, []);
@@ -1538,20 +1151,18 @@ setGaplessEnabled;
           updatedTrack = { ...track, title: meta.title, artist: meta.artist, album: meta.album, duration: meta.duration || track.duration, cover: meta.cover || track.cover };
           setTracks(prev => {
             const updated = prev.map(t => t.id === track.id ? updatedTrack : t);
-            saveToStorage(STORAGE_KEYS.tracks, updated);
+            saveToStorageAsync(STORAGE_KEYS.tracks, updated);
             return updated;
           });
         }
       } catch (e) { console.error("Failed to load metadata:", e); }
     }
     
-    const isYouTube = updatedTrack.path.startsWith('http');
-    
-    if (normEnabled && !isYouTube && updatedTrack.path && !trackLoudness.has(updatedTrack.path)) {
+    if (normEnabled && !trackLoudness.has(updatedTrack.id)) {
       try {
         const loudness = await invoke<{ integrated_lufs: number; true_peak_dbtp: number; gain_db: number } | null>("get_track_loudness", { path: updatedTrack.path });
         if (loudness) {
-          setTrackLoudness(prev => new Map(prev).set(updatedTrack.path, loudness.gain_db));
+          setTrackLoudness(prev => new Map(prev).set(updatedTrack.id, loudness.gain_db));
         }
       } catch (e) { console.error("Failed to load loudness:", e); }
     }
@@ -1559,14 +1170,9 @@ setGaplessEnabled;
     setCurrentTrack(updatedTrack);
     setIsPlaying(true);
     addToHistory(updatedTrack);
-    
     if (audioRef.current) {
       try {
-        if (eqEnabled && !audioContextRef.current) {
-          setupAudioWithEQ();
-        }
-        
-        const src = isYouTube ? updatedTrack.path : convertFileSrc(updatedTrack.path);
+        const src = convertFileSrc(updatedTrack.path);
         audioRef.current.src = src;
         audioRef.current.onerror = (e) => console.error("Audio error:", e);
         audioRef.current.onloadedmetadata = () => {
@@ -1574,7 +1180,7 @@ setGaplessEnabled;
             setCurrentTrack(prev => prev ? { ...prev, duration: Math.floor(audioRef.current!.duration) } : null);
           }
         };
-        audioRef.current.play().catch(e => { if (e.name !== 'AbortError') console.error("Play error:", e) });
+        audioRef.current.play().catch(e => { if (e.name !== 'AbortError') console.error("Play error:", e); });
         
         if ('mediaSession' in navigator) {
           navigator.mediaSession.metadata = new MediaMetadata({
@@ -1611,32 +1217,21 @@ setGaplessEnabled;
     });
   };
 
-  const nextTrack = useCallback(() => {
+  const nextTrack = () => {
     if (!currentTrack) return;
     const sorted = getSortedTracks();
-    const currentIndex = sorted.findIndex(t => t.path === currentTrack.path);
-    if (currentIndex === -1) return;
-    let nextIndex: number;
-    if (shuffleEnabled) {
-      nextIndex = Math.floor(Math.random() * sorted.length);
-    } else {
-      nextIndex = (currentIndex + 1) % sorted.length;
-    }
-    if (sorted[nextIndex]) {
-      playTrack(sorted[nextIndex]);
-    }
-  }, [currentTrack, shuffleEnabled]);
+    const currentIndex = sorted.findIndex(t => t.id === currentTrack.id);
+    const nextIndex = shuffleEnabled ? Math.floor(Math.random() * sorted.length) : (currentIndex + 1) % sorted.length;
+    if (sorted[nextIndex]) playTrack(sorted[nextIndex]);
+  };
 
-  const prevTrack = useCallback(() => {
+  const prevTrack = () => {
     if (!currentTrack) return;
     const sorted = getSortedTracks();
-    const currentIndex = sorted.findIndex(t => t.path === currentTrack.path);
-    if (currentIndex === -1) return;
+    const currentIndex = sorted.findIndex(t => t.id === currentTrack.id);
     const prevIndex = (currentIndex - 1 + sorted.length) % sorted.length;
-    if (sorted[prevIndex]) {
-      playTrack(sorted[prevIndex]);
-    }
-  }, [currentTrack]);
+    if (sorted[prevIndex]) playTrack(sorted[prevIndex]);
+  };
 
   useEffect(() => {
     nextTrackFnRef.current = nextTrack;
@@ -1736,26 +1331,7 @@ setGaplessEnabled;
       const newTracks: Track[] = [];
       let trackId = Date.now();
       
-      let folderCover: string | undefined;
-      
       for (const entry of entries) {
-        if (!folderCover && isImageFile(entry.name)) {
-          try {
-            const imagePath = playlist.path + (playlist.path.endsWith('\\') ? '' : '\\') + entry.name;
-            const imageData = await readFile(imagePath);
-            let binary = '';
-            const bytes = new Uint8Array(imageData);
-            for (let i = 0; i < bytes.byteLength; i++) {
-              binary += String.fromCharCode(bytes[i]);
-            }
-            const base64 = btoa(binary);
-            const ext = entry.name.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg';
-            folderCover = `data:${ext};base64,${base64}`;
-          } catch (e) {
-            console.error("Failed to load cover:", e);
-          }
-        }
-        
         if (isMusicFile(entry.name)) {
           const fullPath = playlist.path + (playlist.path.endsWith('\\') ? '' : '\\') + entry.name;
           const existing = existingTracks.get(fullPath);
@@ -1767,26 +1343,22 @@ setGaplessEnabled;
         }
       }
       
-      const generatedCover = generatePlaylistCover(newTracks);
+      const folderCover = await invoke<string | null>("get_folder_cover", { path: playlist.path });
       
       const updatedPlaylist = { 
         ...playlist, 
-        cover: folderCover || generatedCover || playlist.cover, 
         track_count: newTracks.length
       };
       
       setPlaylists(prev => {
         const updated = prev.map(p => p.path === playlist.path ? updatedPlaylist : p);
+        saveToStorageAsync(STORAGE_KEYS.playlists, updated);
         return updated;
       });
       
-      if (folderCover) {
-        setPlaylistCovers(prev => ({ ...prev, [playlist.path]: [folderCover] }));
-      }
-      
       setTracks(newTracks);
       setCurrentView("library");
-      setCurrentPlaylist(updatedPlaylist);
+      setCurrentPlaylist({ ...playlist, cover: folderCover || undefined });
       
       setTimeout(async () => {
         for (const track of newTracks) {
@@ -1804,7 +1376,7 @@ setGaplessEnabled;
           }
         }
         setTracks([...newTracks]);
-        saveToStorage(STORAGE_KEYS.tracks, newTracks);
+        saveToStorageAsync(STORAGE_KEYS.tracks, newTracks);
       }, 100);
     } catch (e) { console.error("Failed to load playlist:", e); }
   };
@@ -1813,17 +1385,16 @@ setGaplessEnabled;
     setShowCreatePlaylist(true);
   };
 
-  const handleConfirmCreatePlaylist = (name: string, cover: string) => {
+  const handleConfirmCreatePlaylist = (name: string) => {
     const newPlaylist: Playlist = {
       id: Date.now(),
       name,
       path: "",
-      track_count: 0,
-      cover
+      track_count: 0
     };
     setPlaylists(prev => {
       const updated = [...prev, newPlaylist];
-      saveToStorage(STORAGE_KEYS.playlists, updated);
+      saveToStorageAsync(STORAGE_KEYS.playlists, updated);
       return updated;
     });
     setShowCreatePlaylist(false);
@@ -1832,7 +1403,7 @@ setGaplessEnabled;
   const handleSavePlaylist = (updated: Playlist) => {
     setPlaylists(prev => {
       const newList = prev.map(p => p.id === updated.id ? updated : p);
-      saveToStorage(STORAGE_KEYS.playlists, newList);
+      saveToStorageAsync(STORAGE_KEYS.playlists, newList);
       return newList;
     });
     setEditingPlaylist(null);
@@ -1842,7 +1413,7 @@ setGaplessEnabled;
     if (editingPlaylist) {
       setPlaylists(prev => {
         const newList = prev.filter(p => p.id !== editingPlaylist.id);
-        saveToStorage(STORAGE_KEYS.playlists, newList);
+        saveToStorageAsync(STORAGE_KEYS.playlists, newList);
         return newList;
       });
       setEditingPlaylist(null);
@@ -1884,6 +1455,17 @@ setGaplessEnabled;
           crossOrigin="anonymous"
           onEnded={() => { if (!shuffleEnabled) nextTrack(); else { const s = getSortedTracks(); const i = Math.floor(Math.random() * s.length); if(s[i]) playTrack(s[i]); } }}
         />
+      
+      {miniPlayerEnabled && currentTrack && (
+        <MiniPlayer 
+          track={currentTrack}
+          isPlaying={isPlaying}
+          onPlay={() => setIsPlaying(true)}
+          onPause={() => setIsPlaying(false)}
+          onPrev={prevTrack}
+          onNext={nextTrack}
+        />
+      )}
       
       {showCreatePlaylist && <CreatePlaylistModal onClose={() => setShowCreatePlaylist(false)} onCreate={handleConfirmCreatePlaylist} />}
       {editingPlaylist && <EditPlaylistModal playlist={editingPlaylist} onClose={() => setEditingPlaylist(null)} onSave={handleSavePlaylist} onDelete={handleDeletePlaylist} />}
@@ -1969,6 +1551,10 @@ setGaplessEnabled;
               <PlaylistIcon className="w-4 h-4 md:w-5 md:h-5 text-stone-500" />
               <span className="hidden md:inline">Playlists</span>
             </button>
+            <button onClick={() => navigateTo("search")} className={`w-full flex items-center gap-2 md:gap-4 py-3 pl-4 md:pl-6 rounded-sm transition-all duration-300 ${currentView === "search" ? "text-primary font-bold border-r-[2px] border-primary shadow-[0_0_10px_rgba(212,175,55,0.4)] bg-gradient-to-r from-primary/10 to-transparent" : "text-stone-500 hover:text-primary hover:bg-stone-800/50"}`}>
+              <Search className={`w-4 h-4 md:w-5 md:h-5 ${currentView === "search" ? "text-primary" : ""}`} />
+              <span className="hidden md:inline">Search</span>
+            </button>
             <button onClick={() => {
               if (favorites.length > 0) {
                 setTracks(favorites.map(f => ({ ...f, id: f.id, title: f.title, artist: f.artist, album: f.album || 'Unknown', duration: f.duration || 0 })));
@@ -1983,10 +1569,6 @@ setGaplessEnabled;
                 <span>Favorites</span>
                 <span className="text-[10px] text-outline">{favorites.length} tracks</span>
               </div>
-            </button>
-            <button onClick={() => navigateTo("search")} className={`w-full flex items-center gap-2 md:gap-4 py-3 pl-4 md:pl-6 rounded-sm transition-all duration-300 ${currentView === "search" ? "text-primary font-bold border-r-[2px] border-primary shadow-[0_0_10px_rgba(212,175,55,0.4)] bg-gradient-to-r from-primary/10 to-transparent" : "text-stone-500 hover:text-primary hover:bg-stone-800/50"}`}>
-              <Search className={`w-4 h-4 md:w-5 md:h-5 ${currentView === "search" ? "text-primary" : ""}`} />
-              <span className="hidden md:inline">Search</span>
             </button>
           </nav>
 
@@ -2025,8 +1607,8 @@ setGaplessEnabled;
                     className="w-full flex items-center gap-3 py-2 pl-2 md:pl-4 rounded-md hover:bg-white/5 transition-all group"
                   >
                     <div className="w-10 h-10 shrink-0 rounded-md overflow-hidden bg-surface-container-high flex items-center justify-center">
-                      {playlistCovers?.[playlist.path]?.[0] ? (
-                        <img src={playlistCovers[playlist.path][0]} alt="" className="w-full h-full object-cover" />
+                      {playlistCovers?.[playlist.id] ? (
+                        <img src={playlistCovers[playlist.id]} alt="" className="w-full h-full object-cover" />
                       ) : (
                         <PlaylistIcon className="w-5 h-5 text-outline" />
                       )}
@@ -2058,8 +1640,8 @@ setGaplessEnabled;
                     onClick={() => handleSelectPlaylist(playlist)}
                     className="aspect-square rounded-md overflow-hidden bg-surface-container-high group hover:ring-2 hover:ring-primary/50 transition-all"
                   >
-                    {playlistCovers?.[playlist.path]?.[0] ? (
-                      <img src={playlistCovers[playlist.path][0]} alt="" className="w-full h-full object-cover" />
+                    {playlistCovers?.[playlist.id] ? (
+                      <img src={playlistCovers[playlist.id]} alt="" className="w-full h-full object-cover" />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center">
                         <PlaylistIcon className="w-8 h-8 text-outline" />
@@ -2091,17 +1673,18 @@ setGaplessEnabled;
                 onToggleFavorite={toggleFavorite}
                 history={history}
                 playlistName={currentPlaylist?.name}
-                playlistCover={currentPlaylist?.cover}
+                playlistCover={currentPlaylist ? playlistCovers[currentPlaylist.id] : undefined}
                 sortBy={sortBy}
                 onSortBy={setSortBy}
                 allPlaylists={playlists}
-                onSelectPlaylist={handleSelectPlaylist}
                 playlistCovers={playlistCovers}
+                onSelectPlaylist={handleSelectPlaylist}
               />
             )}
             {currentView === "playlists" && (
               <PlaylistsPage 
                 playlists={playlists}
+                playlistCovers={playlistCovers}
                 onSelectPlaylist={handleSelectPlaylist}
                 onCreatePlaylist={handleCreatePlaylist}
                 onEditPlaylist={setEditingPlaylist}
@@ -2114,6 +1697,9 @@ setGaplessEnabled;
                 onRemoveFavorite={removeFavorite}
               />
             )}
+            {currentView === "search" && (
+              <SearchPage onPlayTrack={playTrack} />
+            )}
             {currentView === "settings" && (
               <SettingsPage 
                 libraryPath={libraryPath}
@@ -2123,37 +1709,25 @@ setGaplessEnabled;
                 setGaplessEnabled={setGaplessEnabled}
                 normEnabled={normEnabled}
                 setNormEnabled={setNormEnabled}
-                eqEnabled={eqEnabled}
-                setEqEnabled={setEqEnabled}
-                eqPreset={eqPreset}
-                setEqPreset={setEqPreset}
-                eqBands={eqBands}
-                setEqBands={setEqBands}
-                EQ_PRESETS={EQ_PRESETS}
-                EQ_FREQUENCIES={EQ_FREQUENCIES}
-              />
-            )}
-            {currentView === "search" && (
-              <SearchPage 
-                onPlayTrack={playTrack}
+                miniPlayerEnabled={miniPlayerEnabled}
+                setMiniPlayerEnabled={setMiniPlayerEnabled}
               />
             )}
           </div>
         </main>
         
-<aside 
+        <aside 
           className="fixed right-0 top-[56px] h-[calc(100vh-56px-6rem)] bg-surface-container-lowest/95 border-l border-white/[0.03] flex flex-col z-40 shadow-[-10px_0_30px_-5px_rgba(0,0,0,0.8)]"
-          style={{ width: rightSidebarWidth, backgroundColor: rightSidebarBg }}
+          style={{ width: rightSidebarWidth }}
         >
-          <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-surface-container-lowest/95 pointer-events-none" />
           <div 
-            className="absolute left-0 top-0 w-1 h-full cursor-ew-resize hover:bg-primary/50 z-50"
+            className="absolute left-0 top-0 w-1 h-full cursor-ew-resize hover:bg-primary/50"
             onMouseDown={(e) => {
               e.preventDefault();
               const startX = e.clientX;
               const startWidth = rightSidebarWidth;
               const onMouseMove = (moveEvent: MouseEvent) => {
-                const newWidth = Math.max(200, Math.min(600, startWidth - (moveEvent.clientX - startX)));
+                const newWidth = Math.max(200, Math.min(500, startWidth - (moveEvent.clientX - startX)));
                 setRightSidebarWidth(newWidth);
               };
               const onMouseUp = () => {
@@ -2164,11 +1738,11 @@ setGaplessEnabled;
               document.addEventListener('mouseup', onMouseUp);
             }}
           />
-          <div className="p-4 flex flex-col h-full overflow-hidden relative z-10">
+          <div className="p-4 flex flex-col h-full overflow-hidden">
             <div className="flex items-center justify-between mb-4">
               <span className="text-[11px] uppercase tracking-widest text-outline">Now Playing</span>
             </div>
-            
+              
             {currentTrack ? (
               <div className="flex flex-col h-full overflow-hidden">
                 <div className="text-center mb-3">
@@ -2177,23 +1751,7 @@ setGaplessEnabled;
                 
                 <div className="w-full aspect-square rounded-xl overflow-hidden shadow-[0_8px_30px_rgba(0,0,0,0.5)] mb-4 bg-surface-container shrink-0">
                   {currentTrack.cover ? (
-                    <img 
-                      src={currentTrack.cover} 
-                      alt="" 
-                      className="w-full h-full object-cover"
-                      onLoad={(e) => {
-                        const img = e.currentTarget;
-                        const canvas = document.createElement('canvas');
-                        canvas.width = 1;
-                        canvas.height = 1;
-                        const ctx = canvas.getContext('2d');
-                        if (ctx) {
-                          ctx.drawImage(img, 0, 0, 1, 1);
-                          const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data;
-                          (img.parentElement?.parentElement as HTMLElement)?.style?.setProperty('--cover-color', `rgb(${r},${g},${b})`);
-                        }
-                      }}
-                    />
+                    <img src={currentTrack.cover} alt="" className="w-full h-full object-cover" />
                   ) : (
                     <div className="w-full h-full bg-gradient-to-br from-primary/20 to-secondary-container/30 flex items-center justify-center">
                       <Music className="w-1/2 h-1/2 text-white/20" />
@@ -2206,28 +1764,28 @@ setGaplessEnabled;
                   <div className="text-sm text-outline">{currentTrack.artist}</div>
                 </div>
                 
-                <div className="flex-1 overflow-y-auto text-[10px] text-outline space-y-1">
+                <div className="flex-1 overflow-y-auto space-y-2 text-xs text-outline">
                   {currentTrack.album && currentTrack.album !== 'Unknown Album' && (
-                    <div className="flex justify-between items-center py-1.5 border-b border-white/[0.05]">
-                      <span className="shrink-0">Album</span>
-                      <span className="text-on-surface truncate ml-2 text-right max-w-[140px] text-[9px]">{currentTrack.album}</span>
+                    <div className="flex justify-between py-1.5 border-b border-white/[0.05]">
+                      <span>Album</span>
+                      <span className="text-on-surface truncate ml-4 text-right max-w-[120px]">{currentTrack.album}</span>
                     </div>
                   )}
                   {currentTrack.duration > 0 && (
-                    <div className="flex justify-between items-center py-1.5 border-b border-white/[0.05]">
-                      <span className="shrink-0">Duration</span>
-                      <span className="text-on-surface text-[9px]">{formatDuration(currentTrack.duration)}</span>
+                    <div className="flex justify-between py-1.5 border-b border-white/[0.05]">
+                      <span>Duration</span>
+                      <span className="text-on-surface">{formatDuration(currentTrack.duration)}</span>
                     </div>
                   )}
                   {currentTrack.path && (
-                    <div className="flex justify-between items-center py-1.5 border-b border-white/[0.05]">
-                      <span className="shrink-0">Path</span>
-                      <span className="text-on-surface truncate ml-2 text-right max-w-[140px] text-[8px]">{currentTrack.path.split('\\').pop()}</span>
+                    <div className="flex justify-between py-1.5 border-b border-white/[0.05]">
+                      <span>Path</span>
+                      <span className="text-on-surface truncate ml-4 text-right max-w-[120px]">{currentTrack.path.split('\\').pop()}</span>
                     </div>
                   )}
-                  <div className="flex justify-between items-center py-1.5 border-b border-white/[0.05]">
-                    <span className="shrink-0">Format</span>
-                    <span className="text-on-surface text-[9px]">{currentTrack.path?.split('.').pop()?.toUpperCase() || 'Unknown'}</span>
+                  <div className="flex justify-between py-1.5 border-b border-white/[0.05]">
+                    <span>Format</span>
+                    <span className="text-on-surface">{currentTrack.path?.split('.').pop()?.toUpperCase() || 'Unknown'}</span>
                   </div>
                 </div>
               </div>
@@ -2251,15 +1809,7 @@ setGaplessEnabled;
           </div>
           <div className="min-w-0 truncate">
             <div className="text-xs md:text-sm text-white font-medium truncate mb-0.5 md:mb-1">{currentTrack?.title || "No track"}</div>
-            {currentTrack?.artist && (
-              <button 
-                onClick={() => setSearchQuery(currentTrack.artist)}
-                className="text-[10px] md:text-[11px] text-outline truncate hover:text-primary hover:underline cursor-pointer transition-colors text-left"
-              >
-                {currentTrack.artist}
-              </button>
-            )}
-            {!currentTrack && <div className="text-[10px] md:text-[11px] text-outline">Select a track</div>}
+            <div className="text-[10px] md:text-[11px] text-outline truncate hover:underline cursor-pointer">{currentTrack?.artist || "Select a track"}</div>
           </div>
           {currentTrack && (
             <button onClick={() => toggleFavorite(currentTrack)} className="text-primary ml-2 hover:scale-110 transition-transform p-1">
@@ -2308,7 +1858,7 @@ setGaplessEnabled;
             <button onClick={toggleMute} className="text-white/60 hover:text-primary transition-colors p-1" title="Volume">
               {volume === 0 ? <VolumeX className="w-3 h-4 md:w-4 md:h-4" /> : <Volume2 className="w-3 h-4 md:w-4 md:h-4" />}
             </button>
-            <input type="range" min="0" max="100" value={volume} onChange={handleVolumeChange} className="w-20 md:w-24 h-1 md:h-1.5 rounded-full appearance-none cursor-pointer" style={{ background: `linear-gradient(to right, #f7bd48 0%, #f7bd48 ${volume}%, rgba(255,255,255,0.1) ${volume}%, rgba(255,255,255,0.1) 100%)`, WebkitAppearance: 'none' }} />
+            <input type="range" min="0" max="100" value={volume} onChange={handleVolumeChange} className="flex-1 h-1 md:h-1.5 rounded-full appearance-none cursor-pointer" style={{ background: `linear-gradient(to right, #f7bd48 0%, #f7bd48 ${volume}%, rgba(255,255,255,0.1) ${volume}%, rgba(255,255,255,0.1) 100%)`, WebkitAppearance: 'none' }} />
           </div>
 </div>
         </footer>

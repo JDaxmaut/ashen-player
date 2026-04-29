@@ -1,12 +1,12 @@
 [package]
-name = "alora"
+name = "ashen"
 version = "0.1.0"
-description = "Alora Music Player"
-authors = ["Alora"]
+description = "Ashen Music Player"
+authors = ["Ashen"]
 edition = "2021"
 
 [lib]
-name = "alora_lib"
+name = "ashen_lib"
 crate-type = ["cdylib", "rlib"]
 
 [build-dependencies]

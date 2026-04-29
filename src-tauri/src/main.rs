@@ -1,3 +1,3 @@
 fn main() {
-    alora_lib::run()
+    ashen_lib::run()
 }

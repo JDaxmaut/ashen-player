@@ -1,16 +1,17 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Ember",
-  "identifier": "com.ember.music",
+  "productName": "Ashen",
+  "identifier": "com.ashen.music",
   "version": "0.1.0",
   "build": {
     "beforeDevCommand": "npm run dev",
-    "devUrl": "http://localhost:1420"
+    "devUrl": "http://localhost:1420",
+    "frontendDist": "../dist"
   },
   "app": {
     "windows": [
       {
-        "title": "Ember",
+        "title": "Ashen",
         "width": 1280,
         "height": 800,
         "minWidth": 800,
@@ -34,6 +35,9 @@
   "bundle": {
     "active": true,
     "targets": ["msi", "nsis"],
+    "icon": [
+      "icons/icon.ico"
+    ],
     "windows": {
       "certificateThumbprint": null,
       "digestAlgorithm": "sha256",
