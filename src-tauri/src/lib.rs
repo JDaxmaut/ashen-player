@@ -287,13 +287,150 @@ fn clear_discord_rpc() {
     }
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct YouTubeResult {
+    pub id: String,
+    pub title: String,
+    pub artist: String,
+    pub duration_secs: u32,
+    pub thumbnail: String,
+    pub url: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct DownloadProgress {
+    pub progress: f32,
+    pub status: String,
+    pub file_path: Option<String>,
+}
+
+#[tauri::command]
+async fn search_youtube(query: String) -> Vec<YouTubeResult> {
+    eprintln!("[YOUTUBE] Searching: {}", query);
+    
+    let search_query = format!("ytsearch20:{}", query);
+    let output = tokio::process::Command::new("python")
+        .args([
+            "-m",
+            "yt_dlp",
+            "--no-warnings",
+            "--dump-json",
+            "--no-download",
+            "--no-playlist",
+            "--limit=20",
+            &search_query,
+        ])
+        .output()
+        .await;
+    
+    let output = match output {
+        Ok(o) => o,
+        Err(e) => {
+            eprintln!("[YOUTUBE] yt-dlp not found: {}", e);
+            return vec![];
+        }
+    };
+    
+    if !output.status.success() {
+        let err = String::from_utf8_lossy(&output.stderr);
+        eprintln!("[YOUTUBE] Search error: {}", err);
+        return vec![];
+    }
+    
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let mut results = vec![];
+    
+    for line in stdout.lines() {
+        if let Ok(track) = serde_json::from_str::<serde_json::Value>(line) {
+            let id = track.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            let title = track.get("title").and_then(|v| v.as_str()).unwrap_or("Unknown").to_string();
+            let artist = track.get("channel").and_then(|v| v.as_str()).unwrap_or("Unknown Artist").to_string();
+            let duration = track.get("duration").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
+            let thumbnail = track.get("thumbnail")
+                .and_then(|v| v.as_str())
+                .map(|s| s.replace("jpg", "webp"))
+                .unwrap_or_default();
+            let url = track.get("url").and_then(|v| v.as_str()).unwrap_or(&format!("https://youtube.com/watch?v={}", id)).to_string();
+            
+            results.push(YouTubeResult {
+                id,
+                title,
+                artist,
+                duration_secs: duration,
+                thumbnail,
+                url,
+            });
+        }
+    }
+    
+    eprintln!("[YOUTUBE] Found {} results", results.len());
+    results
+}
+
+#[tauri::command]
+async fn download_youtube(url: String, output_dir: String) -> Result<String, String> {
+    eprintln!("[YOUTUBE] Downloading: {}", url);
+    
+    let output_path = Path::new(&output_dir);
+    if !output_path.exists() {
+        fs::create_dir_all(output_path).map_err(|e| e.to_string())?;
+    }
+    
+    let result = tokio::process::Command::new("python")
+        .args([
+            "-m",
+            "yt_dlp",
+            "--no-warnings",
+            "-x",
+            "--audio-format",
+            "mp3",
+            "--audio-quality",
+            "0",
+            "--embed-thumbnail",
+            "--add-metadata",
+            "-o",
+            &format!("{}/%(title)s.%(ext)s", output_dir),
+            "--no-playlist",
+            "--print",
+            "after_move:%(filepath)s",
+            &url,
+        ])
+        .output()
+        .await;
+    
+    match result {
+        Ok(output) => {
+            if output.status.success() {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                for line in stdout.lines() {
+                    let trimmed = line.trim();
+                    if trimmed.ends_with(".mp3") || trimmed.ends_with(".m4a") {
+                        eprintln!("[YOUTUBE] Downloaded to: {}", trimmed);
+                        return Ok(trimmed.to_string());
+                    }
+                }
+                eprintln!("[YOUTUBE] Download complete");
+                Ok("Downloaded".to_string())
+            } else {
+                let err = String::from_utf8_lossy(&output.stderr);
+                eprintln!("[YOUTUBE] Download error: {}", err);
+                Err(err.to_string())
+            }
+        }
+        Err(e) => {
+            eprintln!("[YOUTUBE] yt-dlp error: {}", e);
+            Err(e.to_string())
+        }
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
-        .invoke_handler(tauri::generate_handler![get_music_folder, get_audio_cover, get_audio_metadata, get_track_loudness, save_audio_cover, get_folder_cover, init_discord_rpc, update_discord_rpc, pause_discord_rpc, resume_discord_rpc, clear_discord_rpc])
+        .invoke_handler(tauri::generate_handler![get_music_folder, get_audio_cover, get_audio_metadata, get_track_loudness, save_audio_cover, get_folder_cover, init_discord_rpc, update_discord_rpc, pause_discord_rpc, resume_discord_rpc, clear_discord_rpc, search_youtube, download_youtube])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

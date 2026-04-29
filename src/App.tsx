@@ -9,7 +9,8 @@ import {
   Play, Pause, SkipBack, SkipForward, Shuffle, Repeat,
   Heart, Mic, ListMusic, Volume2, VolumeX,
   ChevronLeft, ChevronRight, Search, Minus, Square, X,
-  Home, Folder, Heart as HeartFilled, Plus, Trash2, Maximize2, MoreHorizontal
+  Home, Folder, Heart as HeartFilled, Plus, Trash2, Maximize2, MoreHorizontal,
+  Download, Loader2
 } from "lucide-react";
 import NowPlayingOverlay from "./NowPlayingOverlay";
 
@@ -158,18 +159,192 @@ function loadFromStorage<T>(key: string, defaultValue: T): T {
 function saveToStorage(key: string, value: unknown): void {
   try {
     const json = JSON.stringify(value);
+    if (key === STORAGE_KEYS.history && json.length > 100000) return;
+    if (json.length > 5000000) return;
     console.log("Saving to storage:", key, "length:", json.length);
     localStorage.setItem(key, json);
   } catch (e) {
     if (e instanceof DOMException && e.name === 'QuotaExceededError') {
-      console.error("Storage quota exceeded - playlist images may be too large");
-    } else {
-      console.error("Failed to save to storage:", e);
+      console.error("Storage quota exceeded");
     }
   }
 }
 
-function SettingsPage({ libraryPath, setLibraryPath, onSave, gaplessEnabled, setGaplessEnabled, normEnabled, setNormEnabled }: { 
+interface YouTubeTrack {
+  id: string;
+  title: string;
+  artist: string;
+  duration_secs: number;
+  thumbnail: string;
+  url: string;
+}
+
+function SearchPage({ onPlayTrack }: { onPlayTrack: (track: Track) => void }) {
+  const [query, setQuery] = useState("");
+  const [urlInput, setUrlInput] = useState("");
+  const [results, setResults] = useState<YouTubeTrack[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [downloading, setDownloading] = useState<string | null>(null);
+  const [error, setError] = useState("");
+
+  const handleDownloadUrl = async () => {
+    if (!urlInput.trim()) return;
+    setDownloading("url");
+    try {
+      const downloadPath = "E:\\onyx\\lib\\downloads";
+      const result = await invoke<string>("download_youtube", { url: urlInput.trim(), outputDir: downloadPath });
+      setError("");
+      setUrlInput("");
+      alert("Downloaded: " + result);
+    } catch (e) {
+      console.error("Download failed:", e);
+      setError("Download failed: " + e);
+    } finally {
+      setDownloading(null);
+    }
+  };
+
+  const handleSearch = async () => {
+    if (!query.trim()) return;
+    
+    setLoading(true);
+    setError("");
+    
+    try {
+      const searchResults = await invoke<YouTubeTrack[]>("search_youtube", { query: query.trim() });
+      setResults(searchResults);
+    } catch (e) {
+      console.error("Search failed:", e);
+      setError("Search failed. Make sure yt-dlp is installed.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handlePlay = (track: YouTubeTrack) => {
+    const newTrack: Track = {
+      id: parseInt(track.id.slice(-8), 16) || Date.now(),
+      path: track.url,
+      title: track.title,
+      artist: track.artist,
+      album: 'YouTube',
+      duration: track.duration_secs,
+      cover: track.thumbnail || undefined
+    };
+    onPlayTrack(newTrack);
+  };
+
+  const handleDownload = async (track: YouTubeTrack) => {
+    setDownloading(track.id);
+    try {
+      const downloadPath = "E:\\onyx\\lib\\downloads";
+      await invoke<string>("download_youtube", { url: track.url, outputDir: downloadPath });
+    } catch (e) {
+      console.error("Download failed:", e);
+      setError("Download failed: " + e);
+    } finally {
+      setDownloading(null);
+    }
+  };
+
+  return (
+    <div className="p-8 max-w-4xl mx-auto">
+      <h2 className="text-2xl font-bold text-white mb-6">YouTube Music</h2>
+      
+      <div className="mb-6 p-4 bg-surface-container-high rounded-lg">
+        <h3 className="text-white font-medium mb-3">Download by URL</h3>
+        <div className="flex gap-3">
+          <input 
+            type="text"
+            value={urlInput}
+            onChange={(e) => setUrlInput(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && handleDownloadUrl()}
+            placeholder="YouTube URL..."
+            className="flex-1 px-4 py-2 bg-surface rounded-lg text-white placeholder-text-outline focus:outline-none focus:ring-2 focus:ring-primary"
+          />
+          <button 
+            onClick={handleDownloadUrl}
+            disabled={downloading === "url"}
+            className="px-4 py-2 bg-green-500 text-white rounded-lg font-medium hover:opacity-90 disabled:opacity-50"
+          >
+            {downloading === "url" ? "Downloading..." : "Download"}
+          </button>
+        </div>
+      </div>
+      
+      <div className="flex gap-3 mb-8">
+        <input 
+          type="text"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+          placeholder="Search YouTube..."
+          className="flex-1 px-4 py-3 bg-surface-container-high rounded-lg text-white placeholder-text-outline focus:outline-none focus:ring-2 focus:ring-primary"
+        />
+        <button 
+          onClick={handleSearch}
+          disabled={loading}
+          className="px-6 py-3 bg-primary text-black rounded-lg font-medium hover:opacity-90 disabled:opacity-50"
+        >
+          {loading ? "Searching..." : "Search"}
+        </button>
+      </div>
+
+      {error && (
+        <div className="text-red-400 mb-4">{error}</div>
+      )}
+
+      <div className="space-y-2">
+        {results.map((track) => (
+          <div 
+            key={track.id}
+            className="flex items-center gap-4 p-3 bg-surface-container-high rounded-lg hover:bg-surface-container-high/80 cursor-pointer group"
+          >
+            <div className="w-12 h-12 bg-surface-container rounded overflow-hidden shrink-0 relative" onClick={() => handlePlay(track)}>
+              {track.thumbnail ? (
+                <img src={track.thumbnail} alt="" className="w-full h-full object-cover" />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center bg-surface">
+                  <Music className="w-6 h-6 text-outline" />
+                </div>
+              )}
+              <div className="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity">
+                <Play className="w-8 h-8 text-white" fill="white" />
+              </div>
+            </div>
+            <div className="flex-1 min-w-0" onClick={() => handlePlay(track)}>
+              <div className="text-white font-medium truncate group-hover:text-primary">{track.title}</div>
+              <div className="text-outline text-sm truncate">{track.artist}</div>
+            </div>
+            <div className="text-outline text-sm shrink-0">
+              {Math.floor(track.duration_secs / 60)}:{String(track.duration_secs % 60).padStart(2, '0')}
+            </div>
+            <button 
+              onClick={(e) => { e.stopPropagation(); handleDownload(track); }}
+              disabled={downloading === track.id}
+              className="w-10 h-10 rounded-full bg-green-500 flex items-center justify-center shrink-0 opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-50"
+              title="Download to library"
+            >
+              {downloading === track.id ? (
+                <Loader2 className="w-5 h-5 text-white animate-spin" />
+              ) : (
+                <Download className="w-5 h-5 text-white" />
+              )}
+            </button>
+          </div>
+        ))}
+      </div>
+
+      {results.length === 0 && !loading && query && (
+        <div className="text-center text-outline mt-8">
+          No results found. Make sure yt-dlp is installed.
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SettingsPage({ libraryPath, setLibraryPath, onSave, gaplessEnabled, setGaplessEnabled, normEnabled, setNormEnabled, eqEnabled, setEqEnabled, eqPreset, setEqPreset, eqBands, setEqBands, EQ_PRESETS, EQ_FREQUENCIES }: { 
   libraryPath: string; 
   setLibraryPath: (path: string) => void;
   onSave: () => void;
@@ -177,6 +352,14 @@ function SettingsPage({ libraryPath, setLibraryPath, onSave, gaplessEnabled, set
   setGaplessEnabled: (v: boolean) => void;
   normEnabled: boolean;
   setNormEnabled: (v: boolean) => void;
+  eqEnabled: boolean;
+  setEqEnabled: (v: boolean) => void;
+  eqPreset: string;
+  setEqPreset: (v: string) => void;
+  eqBands: number[];
+  setEqBands: (v: number[]) => void;
+  EQ_PRESETS: Record<string, number[]>;
+  EQ_FREQUENCIES: number[];
 }) {
   const [activeTab, setActiveTab] = useState("general");
   const [startupEnabled, setStartupEnabled] = useState(false);
@@ -313,6 +496,62 @@ function SettingsPage({ libraryPath, setLibraryPath, onSave, gaplessEnabled, set
                   >
                     <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform ${gaplessEnabled ? "right-1" : "left-1"}`}></div>
                   </button>
+                </div>
+                
+                <div className="border-t border-white/10 pt-4 mt-4">
+                  <div className="flex items-center justify-between mb-4">
+                    <div>
+                      <div className="text-on-surface">Equalizer</div>
+                      <div className="text-outline text-sm">Adjust audio frequencies</div>
+                    </div>
+                    <button 
+                      onClick={() => setEqEnabled(!eqEnabled)}
+                      className={`w-12 h-6 rounded-full relative transition-colors ${eqEnabled ? "bg-primary-container" : "bg-surface-container-high"}`}
+                    >
+                      <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform ${eqEnabled ? "right-1" : "left-1"}`}></div>
+                    </button>
+                  </div>
+                  
+                  {eqEnabled && (
+                    <div className="space-y-4">
+                      <div className="flex flex-wrap gap-2">
+                        {Object.keys(EQ_PRESETS).map((preset) => (
+                          <button
+                            key={preset}
+                            onClick={() => { setEqPreset(preset); setEqBands(EQ_PRESETS[preset]); }}
+                            className={`px-3 py-1 rounded-full text-xs capitalize ${
+                              eqPreset === preset ? "bg-primary text-black" : "bg-surface-container-high text-on-surface"
+                            }`}
+                          >
+                            {preset}
+                          </button>
+                        ))}
+                      </div>
+                      
+                      <div className="flex justify-between gap-2">
+                        {eqBands.map((value, index) => (
+                          <div key={index} className="flex flex-col items-center">
+                            <input
+                              type="range"
+                              min="-12"
+                              max="12"
+                              value={value}
+                              onChange={(e) => {
+                                const newBands = [...eqBands];
+                                newBands[index] = parseInt(e.target.value);
+                                setEqBands(newBands);
+                                setEqPreset("custom");
+                              }}
+                              className="h-32 w-4 -rotate-180 accent-primary"
+                              style={{ writingMode: 'vertical-lr', direction: 'rtl' }}
+                            />
+                            <span className="text-[10px] text-outline mt-1">{value > 0 ? `+${value}` : value}</span>
+                            <span className="text-[8px] text-outline">{EQ_FREQUENCIES[index] >= 1000 ? `${EQ_FREQUENCIES[index]/1000}k` : EQ_FREQUENCIES[index]}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -868,8 +1107,8 @@ function EditPlaylistModal({ playlist, onClose, onSave, onDelete }: { playlist: 
 
 function App() {
   const [isLoading, setIsLoading] = useState(true);
-  const [currentView, setCurrentView] = useState<"library" | "playlists" | "favorites" | "settings">("library");
-  const [navHistory, setNavHistory] = useState<("library" | "playlists" | "favorites" | "settings")[]>(["library"]);
+  const [currentView, setCurrentView] = useState<"library" | "playlists" | "favorites" | "settings" | "search">("library");
+  const [navHistory, setNavHistory] = useState<("library" | "playlists" | "favorites" | "settings" | "search")[]>(["library"]);
   const [historyIndex, setHistoryIndex] = useState(0);
   const [showCreatePlaylist, setShowCreatePlaylist] = useState(false);
   const [editingPlaylist, setEditingPlaylist] = useState<Playlist | null>(null);
@@ -972,19 +1211,41 @@ useEffect(() => {
   const [repeatMode, setRepeatMode] = useState<"none" | "all" | "one">(() => loadFromStorage(STORAGE_KEYS.repeatMode, "none"));
   const [favorites, setFavorites] = useState<Favorite[]>(() => loadFromStorage(STORAGE_KEYS.favorites, []));
   const [history, setHistory] = useState<PlaybackHistory[]>(() => loadToStorage(STORAGE_KEYS.history, []));
-  const loudnessMap = new Map<number, number>();
+  const loudnessMap = new Map<string, number>();
   const [trackLoudness, setTrackLoudness] = useState(loudnessMap);
   const [sortBy, setSortBy] = useState<"title" | "artist" | "album" | "duration">("title");
-  const [gaplessEnabled, setGaplessEnabled] = useState(true);
+const [gaplessEnabled, setGaplessEnabled] = useState(true);
   const [normEnabled, setNormEnabled] = useState(() => loadFromStorage("alora_normEnabled", true));
   const [showOverlay, setShowOverlay] = useState(false);
   
-
-  setTrackLoudness;
-  setGaplessEnabled;
+  const [eqEnabled, setEqEnabled] = useState(() => loadFromStorage("alora_eqEnabled", false));
+  const [eqPreset, setEqPreset] = useState(() => loadFromStorage("alora_eqPreset", "flat"));
+  const [eqBands, setEqBands] = useState(() => loadFromStorage("alora_eqBands", [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]));
+  
+  const EQ_PRESETS: Record<string, number[]> = {
+    flat: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    bass: [6, 5, 4, 2, 0, 0, 0, 0, 0, 0],
+    treble: [0, 0, 0, 0, 2, 4, 5, 6, 6, 6],
+    vocal: [-1, 0, 2, 4, 5, 5, 4, 2, 0, -1],
+    rock: [4, 3, 1, 0, -1, 0, 2, 4, 5, 5],
+    electronic: [4, 4, 1, -1, -2, 0, 2, 4, 5, 6],
+    classical: [0, 0, 0, 0, 0, -1, -2, -2, -1, 0],
+    jazz: [2, 1, 0, 1, -1, -1, 0, 1, 2, 3],
+  };
+  
+  const EQ_FREQUENCIES = [32, 64, 125, 250, 500, 1000, 2000, 4000, 8000, 16000];
+  
+setTrackLoudness;
+setGaplessEnabled;
   setNormEnabled;
+  setEqEnabled;
+  setEqBands;
 
-  const navigateTo = (view: "library" | "playlists" | "favorites" | "settings") => {
+  useEffect(() => { saveToStorage("alora_eqEnabled", eqEnabled); }, [eqEnabled]);
+  useEffect(() => { saveToStorage("alora_eqPreset", eqPreset); }, [eqPreset]);
+  useEffect(() => { saveToStorage("alora_eqBands", eqBands); }, [eqBands]);
+
+  const navigateTo = (view: "library" | "playlists" | "favorites" | "settings" | "search") => {
     const newHistory = navHistory.slice(0, historyIndex + 1);
     newHistory.push(view);
     setNavHistory(newHistory);
@@ -1007,7 +1268,70 @@ useEffect(() => {
   };
   
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const audioSourceRef = useRef<MediaElementAudioSourceNode | null>(null);
+  const eqFiltersRef = useRef<BiquadFilterNode[]>([]);
+  const gainNodeRef = useRef<GainNode | null>(null);
   const progressInterval = useRef<number | null>(null);
+
+  const setupAudioWithEQ = useCallback(() => {
+    if (!audioRef.current || audioContextRef.current) return;
+    
+    try {
+      const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      audioContextRef.current = ctx;
+      
+      const source = ctx.createMediaElementSource(audioRef.current);
+      audioSourceRef.current = source;
+      
+      const filters: BiquadFilterNode[] = [];
+      let lastNode: AudioNode = source;
+      
+      const frequencies = [32, 64, 125, 250, 500, 1000, 2000, 4000, 8000, 16000];
+      for (let i = 0; i < 10; i++) {
+        const filter = ctx.createBiquadFilter();
+        filter.type = 'peaking';
+        filter.frequency.value = frequencies[i];
+        filter.Q.value = 1.4;
+        filter.gain.value = 0;
+        
+        lastNode.connect(filter);
+        lastNode = filter;
+        filters.push(filter);
+      }
+      
+      eqFiltersRef.current = filters;
+      
+      const gainNode = ctx.createGain();
+      gainNode.gain.value = 1;
+      gainNodeRef.current = gainNode;
+      
+      lastNode.connect(gainNode);
+      gainNode.connect(ctx.destination);
+    } catch (e) {
+      console.error("Failed to setup audio context:", e);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (eqFiltersRef.current.length === 10) {
+      eqFiltersRef.current.forEach((filter, i) => {
+        filter.gain.value = eqEnabled ? eqBands[i] : 0;
+      });
+    }
+  }, [eqBands, eqEnabled]);
+
+  useEffect(() => {
+    if (eqEnabled && audioRef.current && isPlaying && !audioContextRef.current) {
+      setupAudioWithEQ();
+    }
+  }, [eqEnabled, isPlaying, setupAudioWithEQ]);
+
+  useEffect(() => {
+    if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
+      audioContextRef.current.resume();
+    }
+  }, [currentTrack]);
 
   useEffect(() => {
     if (audioRef.current) audioRef.current.volume = volume / 100;
@@ -1061,7 +1385,7 @@ useEffect(() => {
   useEffect(() => {
     if (audioRef.current) {
       if (isPlaying) {
-        audioRef.current.play().catch(console.error);
+        audioRef.current.play().catch(e => { if (e.name !== 'AbortError') console.error(e) });
         startProgressTracking();
       } else {
         audioRef.current.pause();
@@ -1071,8 +1395,8 @@ useEffect(() => {
   }, [isPlaying]);
 
   useEffect(() => {
-    if (audioRef.current && normEnabled && currentTrack?.id != null) {
-      const gainDb = trackLoudness.get(currentTrack.id);
+    if (audioRef.current && normEnabled && currentTrack?.path) {
+      const gainDb = trackLoudness.get(currentTrack.path);
       if (gainDb !== undefined && gainDb !== 0) {
         const volumeMultiplier = Math.pow(10, gainDb / 20);
         audioRef.current.volume = Math.min(1.0, (volume / 100) * volumeMultiplier);
@@ -1195,8 +1519,11 @@ useEffect(() => {
   const addToHistory = useCallback((track: Track) => {
     setHistory(prev => {
       const filtered = prev.filter(h => h.track.path !== track.path);
-      const updated = [{ track, playedAt: Date.now() }, ...filtered].slice(0, 50);
-      saveToStorage(STORAGE_KEYS.history, updated);
+      const trackForHistory = { ...track, cover: undefined };
+      const updated = [{ track: trackForHistory, playedAt: Date.now() }, ...filtered].slice(0, 50);
+      try {
+        saveToStorage(STORAGE_KEYS.history, updated);
+      } catch {}
       return updated;
     });
   }, []);
@@ -1218,11 +1545,13 @@ useEffect(() => {
       } catch (e) { console.error("Failed to load metadata:", e); }
     }
     
-    if (normEnabled && !trackLoudness.has(updatedTrack.id)) {
+    const isYouTube = updatedTrack.path.startsWith('http');
+    
+    if (normEnabled && !isYouTube && updatedTrack.path && !trackLoudness.has(updatedTrack.path)) {
       try {
         const loudness = await invoke<{ integrated_lufs: number; true_peak_dbtp: number; gain_db: number } | null>("get_track_loudness", { path: updatedTrack.path });
         if (loudness) {
-          setTrackLoudness(prev => new Map(prev).set(updatedTrack.id, loudness.gain_db));
+          setTrackLoudness(prev => new Map(prev).set(updatedTrack.path, loudness.gain_db));
         }
       } catch (e) { console.error("Failed to load loudness:", e); }
     }
@@ -1230,9 +1559,14 @@ useEffect(() => {
     setCurrentTrack(updatedTrack);
     setIsPlaying(true);
     addToHistory(updatedTrack);
+    
     if (audioRef.current) {
       try {
-        const src = convertFileSrc(updatedTrack.path);
+        if (eqEnabled && !audioContextRef.current) {
+          setupAudioWithEQ();
+        }
+        
+        const src = isYouTube ? updatedTrack.path : convertFileSrc(updatedTrack.path);
         audioRef.current.src = src;
         audioRef.current.onerror = (e) => console.error("Audio error:", e);
         audioRef.current.onloadedmetadata = () => {
@@ -1240,7 +1574,7 @@ useEffect(() => {
             setCurrentTrack(prev => prev ? { ...prev, duration: Math.floor(audioRef.current!.duration) } : null);
           }
         };
-        audioRef.current.play().catch(e => console.error("Play error:", e));
+        audioRef.current.play().catch(e => { if (e.name !== 'AbortError') console.error("Play error:", e) });
         
         if ('mediaSession' in navigator) {
           navigator.mediaSession.metadata = new MediaMetadata({
@@ -1277,21 +1611,32 @@ useEffect(() => {
     });
   };
 
-  const nextTrack = () => {
+  const nextTrack = useCallback(() => {
     if (!currentTrack) return;
     const sorted = getSortedTracks();
-    const currentIndex = sorted.findIndex(t => t.id === currentTrack.id);
-    const nextIndex = shuffleEnabled ? Math.floor(Math.random() * sorted.length) : (currentIndex + 1) % sorted.length;
-    if (sorted[nextIndex]) playTrack(sorted[nextIndex]);
-  };
+    const currentIndex = sorted.findIndex(t => t.path === currentTrack.path);
+    if (currentIndex === -1) return;
+    let nextIndex: number;
+    if (shuffleEnabled) {
+      nextIndex = Math.floor(Math.random() * sorted.length);
+    } else {
+      nextIndex = (currentIndex + 1) % sorted.length;
+    }
+    if (sorted[nextIndex]) {
+      playTrack(sorted[nextIndex]);
+    }
+  }, [currentTrack, shuffleEnabled]);
 
-  const prevTrack = () => {
+  const prevTrack = useCallback(() => {
     if (!currentTrack) return;
     const sorted = getSortedTracks();
-    const currentIndex = sorted.findIndex(t => t.id === currentTrack.id);
+    const currentIndex = sorted.findIndex(t => t.path === currentTrack.path);
+    if (currentIndex === -1) return;
     const prevIndex = (currentIndex - 1 + sorted.length) % sorted.length;
-    if (sorted[prevIndex]) playTrack(sorted[prevIndex]);
-  };
+    if (sorted[prevIndex]) {
+      playTrack(sorted[prevIndex]);
+    }
+  }, [currentTrack]);
 
   useEffect(() => {
     nextTrackFnRef.current = nextTrack;
@@ -1534,7 +1879,11 @@ useEffect(() => {
 
   return (
     <div className="flex flex-col h-screen bg-bg text-on-surface overflow-hidden">
-      <audio ref={audioRef} />
+      <audio 
+          ref={audioRef} 
+          crossOrigin="anonymous"
+          onEnded={() => { if (!shuffleEnabled) nextTrack(); else { const s = getSortedTracks(); const i = Math.floor(Math.random() * s.length); if(s[i]) playTrack(s[i]); } }}
+        />
       
       {showCreatePlaylist && <CreatePlaylistModal onClose={() => setShowCreatePlaylist(false)} onCreate={handleConfirmCreatePlaylist} />}
       {editingPlaylist && <EditPlaylistModal playlist={editingPlaylist} onClose={() => setEditingPlaylist(null)} onSave={handleSavePlaylist} onDelete={handleDeletePlaylist} />}
@@ -1634,6 +1983,10 @@ useEffect(() => {
                 <span>Favorites</span>
                 <span className="text-[10px] text-outline">{favorites.length} tracks</span>
               </div>
+            </button>
+            <button onClick={() => navigateTo("search")} className={`w-full flex items-center gap-2 md:gap-4 py-3 pl-4 md:pl-6 rounded-sm transition-all duration-300 ${currentView === "search" ? "text-primary font-bold border-r-[2px] border-primary shadow-[0_0_10px_rgba(212,175,55,0.4)] bg-gradient-to-r from-primary/10 to-transparent" : "text-stone-500 hover:text-primary hover:bg-stone-800/50"}`}>
+              <Search className={`w-4 h-4 md:w-5 md:h-5 ${currentView === "search" ? "text-primary" : ""}`} />
+              <span className="hidden md:inline">Search</span>
             </button>
           </nav>
 
@@ -1770,6 +2123,19 @@ useEffect(() => {
                 setGaplessEnabled={setGaplessEnabled}
                 normEnabled={normEnabled}
                 setNormEnabled={setNormEnabled}
+                eqEnabled={eqEnabled}
+                setEqEnabled={setEqEnabled}
+                eqPreset={eqPreset}
+                setEqPreset={setEqPreset}
+                eqBands={eqBands}
+                setEqBands={setEqBands}
+                EQ_PRESETS={EQ_PRESETS}
+                EQ_FREQUENCIES={EQ_FREQUENCIES}
+              />
+            )}
+            {currentView === "search" && (
+              <SearchPage 
+                onPlayTrack={playTrack}
               />
             )}
           </div>
