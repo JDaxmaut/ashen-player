@@ -13,7 +13,8 @@ import {
   Home, Folder, Heart as HeartFilled, Plus, Trash2, Maximize2, MoreHorizontal, Download, Loader2
 } from "lucide-react";
 import NowPlayingOverlay from "./NowPlayingOverlay";
-import MiniPlayer from "./MiniPlayer";
+
+
 
 
 
@@ -275,7 +276,7 @@ function SearchPage({ onPlayTrack, initialQuery }: { onPlayTrack: (track: Track)
   );
 }
 
-function SettingsPage({ libraryPath, setLibraryPath, onSave, gaplessEnabled, setGaplessEnabled, normEnabled, setNormEnabled, miniPlayerEnabled, setMiniPlayerEnabled, eqEnabled, setEqEnabled, eqPreset, setEqPreset, eqBands, setEqBands, EQ_PRESETS, EQ_FREQUENCIES }: { 
+function SettingsPage({ libraryPath, setLibraryPath, onSave, gaplessEnabled, setGaplessEnabled, normEnabled, setNormEnabled, eqEnabled, setEqEnabled, eqPreset, setEqPreset, eqBands, setEqBands, EQ_PRESETS, EQ_FREQUENCIES, discordRpcEnabled, setDiscordRpcEnabled, discordClientId, setDiscordClientId }: { 
   libraryPath: string; 
   setLibraryPath: (path: string) => void;
   onSave: () => void;
@@ -283,8 +284,6 @@ function SettingsPage({ libraryPath, setLibraryPath, onSave, gaplessEnabled, set
   setGaplessEnabled: (v: boolean) => void;
   normEnabled: boolean;
   setNormEnabled: (v: boolean) => void;
-  miniPlayerEnabled: boolean;
-  setMiniPlayerEnabled: (v: boolean) => void;
   eqEnabled: boolean;
   setEqEnabled: (v: boolean) => void;
   eqPreset: string;
@@ -293,6 +292,10 @@ function SettingsPage({ libraryPath, setLibraryPath, onSave, gaplessEnabled, set
   setEqBands: (v: number[]) => void;
   EQ_PRESETS: Record<string, number[]>;
   EQ_FREQUENCIES: number[];
+  discordRpcEnabled: boolean;
+  setDiscordRpcEnabled: (v: boolean) => void;
+  discordClientId: string;
+  setDiscordClientId: (v: string) => void;
 }) {
   const [activeTab, setActiveTab] = useState("general");
   const [startupEnabled, setStartupEnabled] = useState(false);
@@ -369,6 +372,50 @@ function SettingsPage({ libraryPath, setLibraryPath, onSave, gaplessEnabled, set
                     <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform ${trayEnabled ? "right-1" : "left-1"}`}></div>
                   </button>
                 </div>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-on-surface">Discord Rich Presence</div>
+                    <div className="text-outline text-sm">Show current track in Discord</div>
+                  </div>
+                  <button 
+                    onClick={() => { 
+                      const newVal = !discordRpcEnabled; 
+                      setDiscordRpcEnabled(newVal); 
+                      saveToStorage("discordRpcEnabled", newVal);
+                      if (newVal && discordClientId) {
+                        invoke("init_discord_rpc", { clientId: discordClientId });
+                      }
+                    }}
+                    className={`w-12 h-6 rounded-full relative transition-colors ${discordRpcEnabled ? "bg-primary-container" : "bg-surface-container-high"}`}
+                  >
+                    <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform ${discordRpcEnabled ? "right-1" : "left-1"}`}></div>
+                  </button>
+                </div>
+                {discordRpcEnabled && (
+                  <div className="space-y-2">
+                    <label className="text-outline text-sm">Discord Application ID</label>
+                    <input 
+                      type="text" 
+                      value={discordClientId}
+                      onChange={(e) => { 
+                        setDiscordClientId(e.target.value); 
+                        saveToStorage("discordClientId", e.target.value);
+                      }}
+                      placeholder="123456789012345678"
+                      className="w-full bg-surface-container-high rounded-lg px-4 py-2 text-on-surface border border-white/10"
+                    />
+                    <button 
+                      onClick={() => {
+                        if (discordClientId) {
+                          invoke("init_discord_rpc", { clientId: discordClientId });
+                        }
+                      }}
+                      className="px-3 py-1 bg-primary text-black rounded-lg text-sm hover:opacity-90"
+                    >
+                      Connect
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -428,18 +475,6 @@ function SettingsPage({ libraryPath, setLibraryPath, onSave, gaplessEnabled, set
                     className={`w-12 h-6 rounded-full relative transition-colors ${gaplessEnabled ? "bg-primary-container" : "bg-surface-container-high"}`}
                   >
                     <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform ${gaplessEnabled ? "right-1" : "left-1"}`}></div>
-                  </button>
-                </div>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <div className="text-on-surface">Mini Player</div>
-                    <div className="text-outline text-sm">Floating player at bottom right</div>
-                  </div>
-                  <button 
-                    onClick={() => setMiniPlayerEnabled(!miniPlayerEnabled)}
-                    className={`w-12 h-6 rounded-full relative transition-colors ${miniPlayerEnabled ? "bg-primary-container" : "bg-surface-container-high"}`}
-                  >
-                    <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform ${miniPlayerEnabled ? "right-1" : "left-1"}`}></div>
                   </button>
                 </div>
                 <div className="flex items-center justify-between">
@@ -976,6 +1011,7 @@ function App() {
   const [playlists, setPlaylists] = useState<Playlist[]>(() => loadFromStorage(STORAGE_KEYS.playlists, []));
   const [playlistCovers, setPlaylistCovers] = useState<Record<number, string>>({});
   const [currentTrack, setCurrentTrack] = useState<Track | null>(null);
+  const currentTrackRef = useRef<Track | null>(null);
   const [libraryPath, setLibraryPath] = useState(() => loadFromStorage(STORAGE_KEYS.libraryPath, "C:\\Music"));
   const [volume, setVolume] = useState(() => loadFromStorage(STORAGE_KEYS.volume, 5));
   const [progress, setProgress] = useState(0);
@@ -989,7 +1025,10 @@ function App() {
   const [sortBy, setSortBy] = useState<"title" | "artist" | "album" | "duration">("title");
   const [gaplessEnabled, setGaplessEnabled] = useState(true);
   const [normEnabled, setNormEnabled] = useState(() => loadFromStorage("alora_normEnabled", true));
-  const [miniPlayerEnabled, setMiniPlayerEnabled] = useState(() => loadFromStorage("alora_miniPlayerEnabled", false));
+  const [discordRpcEnabled, setDiscordRpcEnabled] = useState(() => loadFromStorage("discordRpcEnabled", false));
+  const [discordClientId, setDiscordClientId] = useState(() => loadFromStorage("discordClientId", "1499071773780611223"));
+  
+
   const [showOverlay, setShowOverlay] = useState(false);
   
   useEffect(() => {
@@ -1089,6 +1128,20 @@ function App() {
     }
   }, [eqEnabled, isPlaying, setupAudioWithEQ]);
 
+  useEffect(() => {
+    return () => {
+      if (discordRpcEnabled && discordClientId) {
+        invoke("clear_discord_rpc");
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (discordRpcEnabled && discordClientId) {
+      invoke("init_discord_rpc", { clientId: discordClientId });
+    }
+  }, []);
+
   setTrackLoudness;
   setGaplessEnabled;
   setNormEnabled;
@@ -1123,6 +1176,18 @@ function App() {
   }, [volume]);
   const nextTrackFnRef = useRef<(() => void) | null>(null);
   const prevTrackFnRef = useRef<(() => void) | null>(null);
+  const tracksRef = useRef<Track[]>(tracks);
+  const currentPlaylistRef = useRef<Playlist | null>(currentPlaylist);
+  const filteredTracks = searchQuery 
+    ? tracks.filter(t => t.title.toLowerCase().includes(searchQuery.toLowerCase()) || t.artist.toLowerCase().includes(searchQuery.toLowerCase()) || t.album.toLowerCase().includes(searchQuery.toLowerCase()))
+    : tracks;
+  const filteredTracksRef = useRef<Track[]>(filteredTracks);
+
+  useEffect(() => {
+    tracksRef.current = tracks;
+    currentPlaylistRef.current = currentPlaylist;
+    filteredTracksRef.current = filteredTracks;
+  }, [tracks, currentPlaylist, filteredTracks]);
 
   function loadToStorage<T>(key: string, defaultValue: T): T {
     return loadFromStorage(key, defaultValue);
@@ -1311,8 +1376,18 @@ function App() {
     }
     
     setCurrentTrack(updatedTrack);
+    currentTrackRef.current = updatedTrack;
     setIsPlaying(true);
     addToHistory(updatedTrack);
+    if (discordRpcEnabled && discordClientId) {
+      invoke("update_discord_rpc", { 
+        title: updatedTrack.title, 
+        artist: updatedTrack.artist, 
+        album: updatedTrack.album, 
+        elapsedMs: 0, 
+        durationMs: updatedTrack.duration * 1000 
+      });
+    }
     if (audioRef.current) {
       try {
         const src = convertFileSrc(updatedTrack.path);
@@ -1340,7 +1415,7 @@ function App() {
   }, [addToHistory]);
 
   const playAll = () => {
-    const sorted = getSortedTracks();
+    const sorted = getSortedTracks(currentPlaylist);
     if (sorted.length > 0) playTrack(sorted[0]);
   };
   
@@ -1349,8 +1424,11 @@ function App() {
     if (shuffled.length > 0) playTrack(shuffled[0]);
   };
 
-  const getSortedTracks = () => {
-    const arr = filteredTracks.length > 0 ? filteredTracks : tracks;
+  const getSortedTracks = (playlist: Playlist | null) => {
+    let arr = filteredTracks.length > 0 ? filteredTracks : tracks;
+    if (playlist) {
+      arr = arr.filter(t => t.path.startsWith(playlist.path));
+    }
     return [...arr].sort((a, b) => {
       if (sortBy === "title") return a.title.localeCompare(b.title);
       if (sortBy === "artist") return a.artist.localeCompare(b.artist);
@@ -1361,9 +1439,11 @@ function App() {
   };
 
   const nextTrack = () => {
-    if (!currentTrack) return;
-    const sorted = getSortedTracks();
-    const currentIndex = sorted.findIndex(t => t.id === currentTrack.id);
+    const track = currentTrackRef.current;
+    const playlist = currentPlaylistRef.current;
+    if (!track) return;
+    const sorted = getSortedTracks(playlist);
+    const currentIndex = sorted.findIndex(t => t.id === track.id);
     let nextIndex: number;
     if (shuffleEnabled) {
       do {
@@ -1376,9 +1456,11 @@ function App() {
   };
 
   const prevTrack = () => {
-    if (!currentTrack) return;
-    const sorted = getSortedTracks();
-    const currentIndex = sorted.findIndex(t => t.id === currentTrack.id);
+    const track = currentTrackRef.current;
+    const playlist = currentPlaylistRef.current;
+    if (!track) return;
+    const sorted = getSortedTracks(playlist);
+    const currentIndex = sorted.findIndex(t => t.id === track.id);
     const prevIndex = (currentIndex - 1 + sorted.length) % sorted.length;
     if (sorted[prevIndex]) playTrack(sorted[prevIndex]);
   };
@@ -1389,23 +1471,66 @@ function App() {
   }, [nextTrack, prevTrack]);
 
   const togglePlay = () => {
-    const sorted = getSortedTracks();
-    if (!currentTrack && sorted.length > 0) playTrack(sorted[0]);
-    else setIsPlaying(!isPlaying);
+    const sorted = getSortedTracks(currentPlaylist);
+    if (!currentTrack && sorted.length > 0) {
+      playTrack(sorted[0]);
+    } else {
+      const newIsPlaying = !isPlaying;
+      if (discordRpcEnabled && discordClientId && currentTrack) {
+        if (!newIsPlaying) {
+          console.log("[RPC] Pausing - calling clear");
+          invoke("clear_discord_rpc");
+        } else {
+          const elapsed = audioRef.current?.currentTime || 0;
+          const duration = audioRef.current?.duration || 0;
+          console.log("[RPC] Resuming - calling update", elapsed, duration);
+          invoke("update_discord_rpc", { 
+            title: currentTrack.title, 
+            artist: currentTrack.artist, 
+            album: currentTrack.album, 
+            elapsedMs: Math.floor(elapsed * 1000), 
+            durationMs: Math.floor(duration * 1000) 
+          });
+        }
+      }
+      setIsPlaying(newIsPlaying);
+    }
   };
 
+  const lastRpcUpdateRef = useRef(0);
   const startProgressTracking = () => {
     if (progressInterval.current) return;
     progressInterval.current = window.setInterval(() => {
-      if (audioRef.current) {
+      if (audioRef.current && currentTrack) {
         const currentTime = audioRef.current.currentTime;
         const duration = audioRef.current.duration;
         const currentProgress = (currentTime / duration) * 100;
         setProgress(currentProgress);
         
+        // Update RPC every 5 seconds for sync
+        if (discordRpcEnabled && discordClientId && isPlaying) {
+          const now = Date.now();
+          if (now - lastRpcUpdateRef.current > 5000) {
+            lastRpcUpdateRef.current = now;
+            invoke("update_discord_rpc", { 
+              title: currentTrack.title, 
+              artist: currentTrack.artist, 
+              album: currentTrack.album, 
+              elapsedMs: Math.floor(currentTime * 1000), 
+              durationMs: Math.floor(duration * 1000) 
+            });
+          }
+        }
+        
         if (gaplessEnabled && duration > 0 && currentTime >= duration - 0.5) {
+          if (discordRpcEnabled && discordClientId) {
+            invoke("clear_discord_rpc");
+          }
           nextTrack();
         } else if (!gaplessEnabled && currentProgress >= 99) {
+          if (discordRpcEnabled && discordClientId) {
+            invoke("clear_discord_rpc");
+          }
           nextTrack();
         }
       }
@@ -1421,14 +1546,35 @@ function App() {
     const newTime = (percent / 100) * audioRef.current.duration;
     audioRef.current.currentTime = newTime;
     setProgress(percent);
+    if (discordRpcEnabled && discordClientId) {
+      const duration = audioRef.current.duration || 0;
+      invoke("update_discord_rpc", { 
+        title: currentTrack.title, 
+        artist: currentTrack.artist, 
+        album: currentTrack.album, 
+        elapsedMs: Math.floor(newTime * 1000), 
+        durationMs: Math.floor(duration * 1000) 
+      });
+    }
   };
 
   const handleProgressClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!audioRef.current || !currentTrack) return;
     const rect = e.currentTarget.getBoundingClientRect();
     const percent = (e.clientX - rect.left) / rect.width;
-    audioRef.current.currentTime = percent * audioRef.current.duration;
+    const newTime = percent * audioRef.current.duration;
+    audioRef.current.currentTime = newTime;
     setProgress(percent * 100);
+    if (discordRpcEnabled && discordClientId) {
+      const duration = audioRef.current.duration || 0;
+      invoke("update_discord_rpc", { 
+        title: currentTrack.title, 
+        artist: currentTrack.artist, 
+        album: currentTrack.album, 
+        elapsedMs: Math.floor(newTime * 1000), 
+        durationMs: Math.floor(duration * 1000) 
+      });
+    }
   };
 
   const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1507,6 +1653,7 @@ function App() {
       });
       
       setTracks(newTracks);
+      currentTrackRef.current = null;
       setCurrentView("library");
       setCurrentPlaylist({ ...playlist, cover: folderCover || undefined });
       
@@ -1570,23 +1717,21 @@ function App() {
     }
   };
 
-  const filteredTracks = searchQuery 
-    ? tracks.filter(t => t.title.toLowerCase().includes(searchQuery.toLowerCase()) || t.artist.toLowerCase().includes(searchQuery.toLowerCase()) || t.album.toLowerCase().includes(searchQuery.toLowerCase()))
-    : tracks;
-
   if (isLoading) {
     return (
-      <div className="fixed inset-0 bg-bg flex flex-col items-center justify-center z-[100]">
+      <div className="fixed inset-0 bg-[#0e0e0e] flex flex-col items-center justify-center z-[100]">
         <div className="relative mb-8">
-          <div className="w-24 h-24 rounded-full bg-gradient-to-r from-primary to-tertiary-container flex items-center justify-center animate-pulse">
-            <Music className="w-12 h-12 text-bg" />
+          <div className="w-28 h-28 rounded-full bg-gradient-to-br from-[#f7bd48]/20 to-[#f7bd48]/10 flex items-center justify-center animate-[spin_3s_linear_infinite]">
+            <div className="w-20 h-20 rounded-full bg-gradient-to-br from-[#f7bd48] to-[#f7bd48]/80 flex items-center justify-center shadow-lg shadow-[#f7bd48]/30">
+              <div className="w-6 h-6 rounded-full bg-[#0e0e0e]/80"></div>
+            </div>
           </div>
           <div className="absolute -bottom-4 left-1/2 -translate-x-1/2 w-32 h-1 bg-white/10 rounded-full overflow-hidden">
-            <div className="h-full bg-gradient-to-r from-primary to-tertiary-container animate-[loading_1.5s_ease-in-out_infinite]"></div>
+            <div className="h-full bg-gradient-to-r from-[#f7bd48] to-[#e6a533] animate-[loading_1.5s_ease-in-out_infinite]"></div>
           </div>
         </div>
-        <h1 className="text-3xl font-bold text-white tracking-tight mb-2">Player</h1>
-        <p className="text-primary text-sm uppercase tracking-widest">Loading...</p>
+        <h1 className="text-4xl font-bold text-white tracking-[0.3em] mb-2" style={{ fontFamily: 'Cormorant Garamond, Georgia, serif' }}>ASHEN</h1>
+        <p className="text-white/40 text-xs uppercase tracking-widest">Loading your music</p>
         <style>{`
           @keyframes loading {
             0% { width: 0%; }
@@ -1603,19 +1748,10 @@ function App() {
       <audio 
           ref={audioRef} 
           crossOrigin="anonymous"
-          onEnded={() => nextTrack()}
+          onEnded={() => nextTrackFnRef.current?.()}
         />
       
-      {miniPlayerEnabled && currentTrack && (
-        <MiniPlayer 
-          track={currentTrack}
-          isPlaying={isPlaying}
-          onPlay={() => setIsPlaying(true)}
-          onPause={() => setIsPlaying(false)}
-          onPrev={prevTrack}
-          onNext={nextTrack}
-        />
-      )}
+      
       
       {showCreatePlaylist && <CreatePlaylistModal onClose={() => setShowCreatePlaylist(false)} onCreate={handleConfirmCreatePlaylist} />}
       {editingPlaylist && <EditPlaylistModal playlist={editingPlaylist} onClose={() => setEditingPlaylist(null)} onSave={handleSavePlaylist} onDelete={handleDeletePlaylist} />}
@@ -1708,6 +1844,7 @@ function App() {
             <button onClick={() => {
               if (favorites.length > 0) {
                 setTracks(favorites.map(f => ({ ...f, id: f.id, title: f.title, artist: f.artist, album: f.album || 'Unknown', duration: f.duration || 0 })));
+                currentTrackRef.current = null;
                 setCurrentPlaylist({ id: -1, name: 'Favorites', path: '', track_count: favorites.length, cover: undefined });
                 setCurrentView("library");
               } else {
@@ -1736,6 +1873,7 @@ function App() {
                   <button 
                     onClick={() => {
                       setTracks(favorites.map(f => ({ ...f, id: f.id, title: f.title, artist: f.artist, album: f.album || 'Unknown', duration: f.duration || 0 })));
+                      currentTrackRef.current = null;
                       setCurrentPlaylist({ id: -1, name: 'Favorites', path: '', track_count: favorites.length, cover: undefined });
                       setCurrentView("library");
                     }}
@@ -1776,6 +1914,7 @@ function App() {
                   <button 
                     onClick={() => {
                       setTracks(favorites.map(f => ({ ...f, id: f.id, title: f.title, artist: f.artist, album: f.album || 'Unknown', duration: f.duration || 0 })));
+                      currentTrackRef.current = null;
                       setCurrentPlaylist({ id: -1, name: 'Favorites', path: '', track_count: favorites.length, cover: undefined });
                       setCurrentView("library");
                     }}
@@ -1859,8 +1998,6 @@ function App() {
                 setGaplessEnabled={setGaplessEnabled}
                 normEnabled={normEnabled}
                 setNormEnabled={setNormEnabled}
-                miniPlayerEnabled={miniPlayerEnabled}
-                setMiniPlayerEnabled={setMiniPlayerEnabled}
                 eqEnabled={eqEnabled}
                 setEqEnabled={setEqEnabled}
                 eqPreset={eqPreset}
@@ -1869,6 +2006,10 @@ function App() {
                 setEqBands={setEqBands}
                 EQ_PRESETS={EQ_PRESETS}
                 EQ_FREQUENCIES={EQ_FREQUENCIES}
+                discordRpcEnabled={discordRpcEnabled}
+                setDiscordRpcEnabled={setDiscordRpcEnabled}
+                discordClientId={discordClientId}
+                setDiscordClientId={setDiscordClientId}
               />
             )}
           </div>

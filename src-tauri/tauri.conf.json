@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Ashen",
-  "identifier": "com.ashen.music",
+  "identifier": "com.ashen.musicplayer",
   "version": "0.1.0",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -9,6 +9,7 @@
     "frontendDist": "../dist"
   },
   "app": {
+    "withGlobalTauri": true,
     "windows": [
       {
         "title": "Ashen",
@@ -21,7 +22,8 @@
         "decorations": false,
         "transparent": false,
         "center": true,
-        "backgroundColor": "#0e0e0e"
+        "backgroundColor": "#0e0e0e",
+        "devtools": true
       }
     ],
     "security": {
