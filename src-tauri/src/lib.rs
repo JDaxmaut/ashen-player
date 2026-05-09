@@ -11,14 +11,18 @@ extern "system" {
 
 const CREATE_NO_WINDOW: u32 = 0x08000000;
 
-use base64::{Engine as _, engine::general_purpose};
+use base64::{engine::general_purpose, Engine as _};
+use image::imageops::FilterType;
+use image::GenericImageView;
 use lofty::file::{AudioFile, TaggedFileExt};
 use lofty::probe::Probe;
-use lofty::tag::Accessor;
+use lofty::tag::{Accessor, ItemKey};
+use cpal::traits::{HostTrait, DeviceTrait};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::io::Cursor;
 
 
 
@@ -30,6 +34,7 @@ pub struct AudioMetadata {
     pub album: String,
     pub duration: u32,
     pub cover: Option<String>,
+    pub lyrics: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -90,8 +95,10 @@ fn get_audio_metadata(path: String) -> Option<AudioMetadata> {
         let mime = picture.mime_type().map(|m| m.as_str()).unwrap_or("image/jpeg");
         format!("data:{};base64,{}", mime, base64_img)
     });
+
+    let lyrics = tag.get_string(ItemKey::UnsyncLyrics).map(|s| s.to_string());
     
-    Some(AudioMetadata { title, artist, album, duration, cover })
+    Some(AudioMetadata { title, artist, album, duration, cover, lyrics })
 }
 
 #[tauri::command]
@@ -102,6 +109,29 @@ fn get_audio_cover(path: String) -> Option<String> {
     let base64_img = general_purpose::STANDARD.encode(picture.data());
     let mime = picture.mime_type().map(|m| m.as_str()).unwrap_or("image/jpeg");
     Some(format!("data:{};base64,{}", mime, base64_img))
+}
+
+#[tauri::command]
+fn get_audio_cover_thumbnail(path: String, max_size: u32) -> Option<String> {
+    let tagged_file = Probe::open(&path).ok()?.read().ok()?;
+    let tag = tagged_file.primary_tag().or_else(|| tagged_file.first_tag())?;
+    let picture = tag.pictures().get(0)?;
+    
+    let img = image::load_from_memory(picture.data()).ok()?;
+    let (w, h) = img.dimensions();
+    
+    let thumb = if w > h {
+        img.resize(max_size, max_size * h / w, FilterType::Triangle)
+    } else {
+        img.resize(max_size * w / h, max_size, FilterType::Triangle)
+    };
+    
+    let mut buf = Vec::new();
+    let mut cursor = Cursor::new(&mut buf);
+    thumb.write_to(&mut cursor, image::ImageFormat::Jpeg).ok()?;
+    
+    let base64_img = general_purpose::STANDARD.encode(&buf);
+    Some(format!("data:image/jpeg;base64,{}", base64_img))
 }
 
 #[tauri::command]
@@ -156,6 +186,53 @@ fn get_folder_cover(path: String) -> Option<String> {
             let ext = entry.path().extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
             if ["jpg", "jpeg", "png", "gif"].contains(&ext.as_str()) {
                             let data = fs::read(entry.path()).ok()?;
+                let base64_img = general_purpose::STANDARD.encode(&data);
+                let mime = if ext == "png" { "image/png" } else { "image/jpeg" };
+                return Some(format!("data:{};base64,{}", mime, base64_img));
+            }
+        }
+    }
+    
+    None
+}
+
+#[tauri::command]
+fn get_folder_cover_thumbnail(path: String, max_size: u32) -> Option<String> {
+    let folder_path = PathBuf::from(&path);
+    let search_dir = if folder_path.is_dir() {
+        &folder_path
+    } else {
+        folder_path.parent().unwrap_or(&folder_path)
+    };
+    
+    if !search_dir.exists() {
+        return None;
+    }
+    
+    let entries = fs::read_dir(search_dir).ok()?;
+    for entry in entries.flatten() {
+        let name = entry.file_name().to_string_lossy().to_lowercase();
+        if name.starts_with("cover.") || name.starts_with("folder.") || name.starts_with("front.") || name.starts_with("album.") {
+            let ext = entry.path().extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
+            if ["jpg", "jpeg", "png", "gif"].contains(&ext.as_str()) {
+                let data = fs::read(entry.path()).ok()?;
+                
+                if let Ok(img) = image::load_from_memory(&data) {
+                    let (w, h) = img.dimensions();
+                    let thumb = if w > h {
+                        img.resize(max_size, max_size * h / w, FilterType::Triangle)
+                    } else {
+                        img.resize(max_size * w / h, max_size, FilterType::Triangle)
+                    };
+                    
+                    let mut buf = Vec::new();
+                    let mut cursor = Cursor::new(&mut buf);
+                    thumb.write_to(&mut cursor, image::ImageFormat::Jpeg).ok()?;
+                    
+                    let base64_img = general_purpose::STANDARD.encode(&buf);
+                    return Some(format!("data:image/jpeg;base64,{}", base64_img));
+                }
+                
                 let base64_img = general_purpose::STANDARD.encode(&data);
                 let mime = if ext == "png" { "image/png" } else { "image/jpeg" };
                 return Some(format!("data:{};base64,{}", mime, base64_img));
@@ -376,12 +453,41 @@ async fn download_youtube(url: String, output_dir: String) -> Result<String, Str
 pub fn run() {
     #[cfg(windows)]
     unsafe { FreeConsole(); }
+#[tauri::command]
+fn get_audio_devices() -> Vec<String> {
+    let host = cpal::default_host();
+    let mut devices: Vec<String> = Vec::new();
     
+    if let Ok(outputs) = host.output_devices() {
+        for device in outputs {
+            if let Ok(name) = device.name() {
+                if device.default_output_config().is_ok() {
+                    devices.push(name);
+                }
+            }
+        }
+    }
+    
+    if devices.is_empty() {
+        vec!["Default Output".to_string()]
+    } else {
+        devices
+    }
+}
+
+#[tauri::command]
+fn apply_vibrancy(window: tauri::Window) {
+    #[cfg(target_os = "windows")]
+    {
+        let _ = window_vibrancy::apply_mica(&window, Some(true));
+    }
+}
+
     tauri::Builder::default()
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
-        .invoke_handler(tauri::generate_handler![get_music_folder, get_audio_cover, get_audio_metadata, get_track_loudness, save_audio_cover, get_folder_cover, search_youtube, download_youtube])
+        .invoke_handler(tauri::generate_handler![get_music_folder, get_audio_cover, get_audio_cover_thumbnail, get_audio_metadata, get_track_loudness, save_audio_cover, get_folder_cover, get_folder_cover_thumbnail, search_youtube, download_youtube, get_audio_devices, apply_vibrancy])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

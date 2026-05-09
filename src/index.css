@@ -131,3 +131,26 @@ input[type="range"]::-webkit-slider-thumb:hover {
   cursor: pointer;
   margin-left: -4px;
 }
+
+/* Track list virtual scroll fix */
+.track-list-container {
+  contain: strict;
+}
+
+/* Equalizer bars animation */
+@keyframes eq-bar {
+  0%, 100% { transform: scaleY(0.2); }
+  50% { transform: scaleY(1); }
+}
+.animate-eq-bar-1 {
+  animation: eq-bar 0.5s ease-in-out infinite;
+  transform-origin: bottom;
+}
+.animate-eq-bar-2 {
+  animation: eq-bar 0.5s ease-in-out 0.12s infinite;
+  transform-origin: bottom;
+}
+.animate-eq-bar-3 {
+  animation: eq-bar 0.5s ease-in-out 0.24s infinite;
+  transform-origin: bottom;
+}

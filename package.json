@@ -13,6 +13,7 @@
     "@tauri-apps/api": "^2.10.1",
     "@tauri-apps/plugin-dialog": "^2.7.0",
     "@tauri-apps/plugin-fs": "^2.5.0",
+    "@types/react-window": "^1.8.8",
     "@types/wavesurfer.js": "^6.0.12",
     "framer-motion": "^12.38.0",
     "idb-keyval": "^6.2.2",
@@ -20,6 +21,7 @@
     "music-metadata-browser": "^2.5.11",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "react-window": "^1.8.10",
     "wavesurfer.js": "^7.12.6"
   },
   "devDependencies": {
