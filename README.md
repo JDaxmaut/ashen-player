@@ -23,9 +23,9 @@
 
 ### About
 
-Ashen is a desktop music player built with **Tauri v2**, **React**, and **Rust**. Every pixel is soaked in a gothic-rock aesthetic -- deep burgundy-black gradients, dark gold accents (`#f7bd48`), and glassmorphism panels that blur the line between the digital and the divine.
+Ashen is a desktop music player built with **Tauri v2**, **React**, and **Rust**. A gothic-rock aesthetic -- deep burgundy-black gradients, dark gold accents (`#f7bd48`), and rose-tinted highlights.
 
-Its soul lives in the shadows: twelve-inch vinyl mockups, rose-tinted highlights, and ultra-thin borders that barely hold the light.
+Every surface is `backdrop-blur-xl` with `border-white/[0.04]`, ultra-thin borders that barely hold the light.
 
 ### Features
 
@@ -38,7 +38,6 @@ Its soul lives in the shadows: twelve-inch vinyl mockups, rose-tinted highlights
 - **Loudness normalization** -- backend-powered EBU R128 analysis (LUFS)
 - **Search** -- filter your library by title, artist, or album
 - **Resizable panels** -- collapsible sidebar, draggable footer, and a resizable right panel
-- **Glassmorphism UI** -- every surface is `backdrop-blur-xl` with `border-white/[0.04]`
 
 ### Tech
 
