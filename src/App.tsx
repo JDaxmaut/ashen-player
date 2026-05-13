@@ -2087,7 +2087,7 @@ const startProgressTracking = () => {
           <div className="p-4 flex flex-col h-full overflow-hidden">
             <div className="flex items-center justify-between mb-4">
               <span className="text-[11px] uppercase tracking-widest text-zinc-300 drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)]">{showQueue ? "Queue" : "Now Playing"}</span>
-              <button onClick={() => setShowQueue(!showQueue)} className="text-[10px] uppercase tracking-wider text-outline hover:text-primary transition-colors">
+              <button onClick={() => setShowQueue(!showQueue)} className="text-[10px] uppercase tracking-wider text-outline hover:text-primary transition-colors px-2 py-1 rounded-md bg-white/5 hover:bg-white/10 shadow-sm">
                 {showQueue ? "Now Playing" : "Show Queue"}
               </button>
             </div>

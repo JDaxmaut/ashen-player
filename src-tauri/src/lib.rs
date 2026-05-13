@@ -101,6 +101,34 @@ fn get_audio_metadata(path: String) -> Option<AudioMetadata> {
     Some(AudioMetadata { title, artist, album, duration, cover, lyrics })
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct YandexBio {
+    pub bio: String,
+    pub genres: Vec<String>,
+}
+
+#[tauri::command]
+async fn get_yandex_bio(artist: String) -> Option<YandexBio> {
+    let client = reqwest::Client::new();
+    let url = format!("https://api.music.yandex.net/search?text={}&type=artist", urlencoding::encode(&artist));
+
+    let resp = client.get(&url).send().await.ok()?;
+    let data: serde_json::Value = resp.json().await.ok()?;
+
+    let result = data["result"]["artists"]["results"].as_array()?.first()?.clone();
+
+    let bio = result["description"]["text"].as_str().unwrap_or("").to_string();
+    let genres: Vec<String> = result["genres"].as_array()
+        .map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+        .unwrap_or_default();
+
+    if bio.is_empty() && genres.is_empty() {
+        return None;
+    }
+
+    Some(YandexBio { bio, genres })
+}
+
 #[tauri::command]
 fn get_audio_cover(path: String) -> Option<String> {
     let tagged_file = Probe::open(&path).ok()?.read().ok()?;
@@ -487,7 +515,7 @@ fn apply_vibrancy(window: tauri::Window) {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
-        .invoke_handler(tauri::generate_handler![get_music_folder, get_audio_cover, get_audio_cover_thumbnail, get_audio_metadata, get_track_loudness, save_audio_cover, get_folder_cover, get_folder_cover_thumbnail, search_youtube, download_youtube, get_audio_devices, apply_vibrancy])
+        .invoke_handler(tauri::generate_handler![get_music_folder, get_audio_cover, get_audio_cover_thumbnail, get_audio_metadata, get_yandex_bio, get_track_loudness, save_audio_cover, get_folder_cover, get_folder_cover_thumbnail, search_youtube, download_youtube, get_audio_devices, apply_vibrancy])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
