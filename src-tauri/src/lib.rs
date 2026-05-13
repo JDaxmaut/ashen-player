@@ -61,11 +61,11 @@ fn get_audio_metadata(path: String) -> Option<AudioMetadata> {
     let tagged_file = match Probe::open(&path) {
         Ok(p) => match p.read() {
             Ok(tf) => tf,
-            Err(e) => {
+            Err(_) => {
                             return None;
             }
         },
-        Err(e) => {
+        Err(_) => {
                     return None;
         }
     };
@@ -266,13 +266,13 @@ fn get_track_loudness(path: String) -> Option<AudioLoudness> {
     
     let output = match result {
         Ok(o) => o,
-        Err(e) => {
+        Err(_) => {
                     return None;
         }
     };
     
     if !output.status.success() {
-        let err = String::from_utf8_lossy(&output.stderr);
+        let _err = String::from_utf8_lossy(&output.stderr);
             return None;
     }
     
@@ -355,13 +355,13 @@ async fn search_youtube(query: String) -> Vec<YouTubeResult> {
     
     let output = match output {
         Ok(o) => o,
-        Err(e) => {
+        Err(_) => {
                     return vec![];
         }
     };
     
     if !output.status.success() {
-        let err = String::from_utf8_lossy(&output.stderr);
+        let _err = String::from_utf8_lossy(&output.stderr);
             return vec![];
     }
     

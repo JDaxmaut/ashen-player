@@ -8,7 +8,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { 
   Activity, Music, ListMusic as PlaylistIcon, Settings,
   Play, Pause, SkipBack, SkipForward, Shuffle, Repeat,
-  Heart, FileText, ListMusic, Volume2, VolumeX,
+  Heart, FileText, Volume2, VolumeX,
   ChevronLeft, ChevronRight, Search, Minus, Square, X,
   Home, Folder, Heart as HeartFilled, Plus, Trash2, Maximize2, MoreHorizontal, Download, Loader2, Monitor
 } from "lucide-react";
@@ -1070,10 +1070,9 @@ function App() {
   const [currentPlaylist, setCurrentPlaylist] = useState<Playlist | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [sidebarPlaylistView, setSidebarPlaylistView] = useState<"compact" | "expanded">("expanded");
   const [titlebarHeight, setTitlebarHeight] = useState(56);
   const [footerHeight, setFooterHeight] = useState(() => loadFromStorage("alora_footerHeight", 80));
-  const [sidebarWidth, setSidebarWidth] = useState(280);
+  const [isExpanded, setIsExpanded] = useState(true);
   const [rightSidebarWidth, setRightSidebarWidth] = useState(300);
   const [sidebarBg, setSidebarBg] = useState<string>('#0e0e0e');
   
@@ -1247,6 +1246,7 @@ function App() {
   
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const progressInterval = useRef<number | null>(null);
+  const activeSrcRef = useRef<string>("");
   const audioContextRef = useRef<AudioContext | null>(null);
   const audioSourceRef = useRef<MediaElementAudioSourceNode | null>(null);
   const eqFiltersRef = useRef<BiquadFilterNode[]>([]);
@@ -1322,6 +1322,20 @@ function App() {
       audioRef.current.volume = volume / 100;
     }
   }, [volume, normEnabled, currentTrack, trackLoudness]);
+
+  useEffect(() => {
+    if (currentTrack) {
+      activeSrcRef.current = "";
+      setProgress(0);
+      if (audioRef.current) {
+        audioRef.current.currentTime = 0;
+      }
+      stopProgressTracking();
+      if (isPlaying) {
+        setTimeout(() => startProgressTracking(), 50);
+      }
+    }
+  }, [currentTrack]);
 
   const loadLibrary = async () => {
     trackOrderRef.current = [];
@@ -1553,17 +1567,16 @@ function App() {
 
 const startProgressTracking = () => {
     if (progressInterval.current) return;
-    let activeSrc = "";
     progressInterval.current = window.setInterval(() => {
       if (!audioRef.current || !audioRef.current.src) return;
       const currentSrc = audioRef.current.src;
-      if (activeSrc && currentSrc !== activeSrc) return;
+      if (activeSrcRef.current && currentSrc !== activeSrcRef.current) return;
       const currentTime = audioRef.current.currentTime;
       const duration = audioRef.current.duration;
       if (!duration || duration === 0 || isNaN(duration)) return;
       const currentProgress = (currentTime / duration) * 100;
-      if (activeSrc) setProgress(currentProgress);
-      if (!activeSrc) activeSrc = currentSrc;
+      if (activeSrcRef.current) setProgress(currentProgress);
+      if (!activeSrcRef.current) activeSrcRef.current = currentSrc;
       
       if (transitioningRef.current || trackTriggeredRef.current) return;
       
@@ -1759,7 +1772,7 @@ const startProgressTracking = () => {
 
   if (isLoading) {
     return (
-      <div className="fixed inset-0 bg-bg flex flex-col items-center justify-center z-[100]">
+      <div className="fixed inset-0 flex flex-col items-center justify-center z-[100]">
         <div className="relative mb-8">
           <div className="w-24 h-24 rounded-full bg-gradient-to-r from-primary to-tertiary-container flex items-center justify-center animate-pulse">
             <Music className="w-12 h-12 text-bg" />
@@ -1794,7 +1807,7 @@ const startProgressTracking = () => {
       {showCreatePlaylist && <CreatePlaylistModal onClose={() => setShowCreatePlaylist(false)} onCreate={handleConfirmCreatePlaylist} />}
       {editingPlaylist && <EditPlaylistModal playlist={editingPlaylist} onClose={() => setEditingPlaylist(null)} onSave={handleSavePlaylist} onDelete={handleDeletePlaylist} />}
       
-      <header className={`fixed top-0 left-0 right-0 z-[60] bg-surface-container-lowest/80 backdrop-blur-md border-b border-surface-container-high/50 flex items-center justify-between pl-4 shadow-2xl`} style={{ height: titlebarHeight }} data-tauri-drag-region>
+      <header className={`fixed top-0 left-0 right-0 z-[60] bg-black/20 backdrop-blur-md border-b border-white/[0.04] flex items-center justify-between pl-4`} style={{ height: titlebarHeight }} data-tauri-drag-region>
         <div className="flex items-center gap-2">
           <button onClick={() => navigateTo("settings")} className="p-2 text-outline hover:text-primary transition-colors" title="Settings">
             <MoreHorizontal className="w-5 h-5" />
@@ -1803,10 +1816,13 @@ const startProgressTracking = () => {
             <button onClick={goBack} disabled={historyIndex === 0} className={`p-2 transition-colors ${historyIndex === 0 ? 'text-white/20 cursor-not-allowed' : 'text-outline hover:text-primary'}`}><ChevronLeft className="w-4 h-4" /></button>
             <button onClick={goForward} disabled={historyIndex === navHistory.length - 1} className={`p-2 transition-colors ${historyIndex === navHistory.length - 1 ? 'text-white/20 cursor-not-allowed' : 'text-outline hover:text-primary'}`}><ChevronRight className="w-4 h-4" /></button>
           </div>
+          <button onClick={() => { setCurrentPlaylist(null); setCurrentView("library"); }} className={`p-2 transition-colors ${currentView === "library" && !currentPlaylist ? "text-primary" : "text-outline hover:text-primary"}`} title="Home">
+            <Home className="w-4 h-4" />
+          </button>
         </div>
         
-        {titlebarHeight >= 50 && (
-          <div className="flex-1 flex justify-center max-w-xl px-4">
+{titlebarHeight >= 50 && (
+          <div className="flex-1 flex justify-start ml-4 md:ml-8 lg:ml-12 xl:ml-16 px-4">
             <div className="relative w-full max-w-md group">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-outline text-sm group-focus-within:text-primary transition-colors w-4 h-4" />
               <input 
@@ -1846,38 +1862,28 @@ const startProgressTracking = () => {
       </header>
 
       <div className="flex flex-1" style={{ marginTop: titlebarHeight }}>
-        <aside className="bg-surface-container-lowest/95 border-r border-white/[0.03] flex flex-col py-6 px-3 md:px-4 fixed left-0 z-40 shadow-[10px_0_30px_-5px_rgba(0,0,0,0.8)] font-serif tracking-tight text-sm uppercase transition-all duration-300 flex flex-col" style={{ top: titlebarHeight, height: `calc(100vh - ${titlebarHeight}px)`, width: sidebarWidth }}>
-          <div 
-            className="absolute right-0 top-0 w-1 h-full cursor-ew-resize hover:bg-primary/50"
-            onMouseDown={(e) => {
-              e.preventDefault();
-              const startX = e.clientX;
-              const startWidth = sidebarWidth;
-              const onMouseMove = (moveEvent: MouseEvent) => {
-                const newWidth = Math.max(60, Math.min(400, startWidth + (moveEvent.clientX - startX)));
-                setSidebarWidth(newWidth);
-              };
-              const onMouseUp = () => {
-                document.removeEventListener('mousemove', onMouseMove);
-                document.removeEventListener('mouseup', onMouseUp);
-              };
-              document.addEventListener('mousemove', onMouseMove);
-              document.addEventListener('mouseup', onMouseUp);
-            }}
-          />
-          <nav className="flex-1 px-1 md:px-4 space-y-1 overflow-y-auto">
-            <div className="hidden md:block text-[11px] text-outline uppercase tracking-widest px-4 mb-4">Browse</div>
-            <button onClick={() => { setCurrentPlaylist(null); setCurrentView("library"); }} className={`w-full flex items-center gap-2 md:gap-4 py-3 pl-4 md:pl-6 rounded-sm transition-all duration-300 ${currentView === "library" && !currentPlaylist ? "text-primary font-bold border-r-[2px] border-primary shadow-[0_0_10px_rgba(212,175,55,0.4)] bg-gradient-to-r from-primary/10 to-transparent" : "text-stone-500 hover:text-primary hover:bg-stone-800/50"}`}>
-              <Home className={`w-4 h-4 md:w-5 md:h-5 ${currentView === "library" ? "text-primary" : ""}`} />
-              <span className="hidden md:inline">Home</span>
+        <aside className={`h-full bg-black/20 backdrop-blur-md border-r border-white/[0.04] transition-all duration-300 ease-in-out flex flex-col py-6 fixed left-0 z-40 ${isExpanded ? 'w-64 px-4' : 'w-[72px] px-0'}`} style={{ top: titlebarHeight, height: `calc(100vh - ${titlebarHeight}px)` }}>
+          <div className={`flex ${isExpanded ? 'justify-end' : 'justify-center'} mb-4`}>
+            <button 
+              onClick={() => setIsExpanded(!isExpanded)}
+              className="w-6 h-6 flex items-center justify-center text-stone-500 hover:text-stone-300 transition-colors"
+            >
+              {isExpanded ? <ChevronLeft className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
             </button>
-            <button onClick={() => navigateTo("playlists")} className={`w-full flex items-center gap-2 md:gap-4 py-3 pl-4 md:pl-6 rounded-sm transition-all duration-300 ${currentView === "playlists" ? "text-primary font-bold border-r-[2px] border-primary shadow-[0_0_10px_rgba(212,175,55,0.4)] bg-gradient-to-r from-primary/10 to-transparent" : "text-stone-500 hover:text-primary hover:bg-stone-800/50"}`}>
-              <PlaylistIcon className="w-4 h-4 md:w-5 md:h-5 text-stone-500" />
-              <span className="hidden md:inline">Playlists</span>
+          </div>
+          <nav className="flex-1 space-y-1 overflow-y-auto">
+            {isExpanded && <div className="text-stone-500 uppercase tracking-widest text-[10px] font-semibold mb-3">BROWSE</div>}
+            <button onClick={() => navigateTo("playlists")} className={`w-full py-3 rounded-sm transition-all duration-300 ${currentView === "playlists" ? "border-l-2 border-primary/70 bg-gradient-to-r from-primary/20 to-transparent text-primary/90" : "text-stone-400 font-normal opacity-80 hover:text-stone-200 hover:opacity-100"}`}>
+              <div className={`flex items-center ${isExpanded ? 'justify-start px-3 gap-x-4' : 'justify-center'}`}>
+                <PlaylistIcon className={`w-5 h-5 shrink-0 ${currentView === "playlists" ? "text-primary" : ""}`} />
+                {isExpanded && <span className="text-sm">Playlists</span>}
+              </div>
             </button>
-            <button onClick={() => navigateTo("search")} className={`w-full flex items-center gap-2 md:gap-4 py-3 pl-4 md:pl-6 rounded-sm transition-all duration-300 ${currentView === "search" ? "text-primary font-bold border-r-[2px] border-primary shadow-[0_0_10px_rgba(212,175,55,0.4)] bg-gradient-to-r from-primary/10 to-transparent" : "text-stone-500 hover:text-primary hover:bg-stone-800/50"}`}>
-              <Search className={`w-4 h-4 md:w-5 md:h-5 ${currentView === "search" ? "text-primary" : ""}`} />
-              <span className="hidden md:inline">Search</span>
+            <button onClick={() => navigateTo("search")} className={`w-full py-3 rounded-sm transition-all duration-300 ${currentView === "search" ? "border-l-2 border-primary/70 bg-gradient-to-r from-primary/20 to-transparent text-primary/90" : "text-stone-400 font-normal opacity-80 hover:text-stone-200 hover:opacity-100"}`}>
+              <div className={`flex items-center ${isExpanded ? 'justify-start px-3 gap-x-4' : 'justify-center'}`}>
+                <Search className={`w-5 h-5 shrink-0 ${currentView === "search" ? "text-primary" : ""}`} />
+                {isExpanded && <span className="text-sm">Search</span>}
+              </div>
             </button>
             <button onClick={() => {
               if (favorites.length > 0) {
@@ -1887,104 +1893,98 @@ const startProgressTracking = () => {
               } else {
                 navigateTo("favorites");
               }
-            }} className={`w-full flex items-center gap-2 md:gap-4 py-3 pl-4 md:pl-6 rounded-sm transition-all duration-300 ${currentView === "favorites" || currentPlaylist?.id === -1 ? "text-primary font-bold border-r-[2px] border-primary shadow-[0_0_10px_rgba(212,175,55,0.4)] bg-gradient-to-r from-primary/10 to-transparent" : "text-stone-500 hover:text-primary hover:bg-stone-800/50"}`}>
-              <Heart className={`w-4 h-4 md:w-5 md:h-5 ${currentView === "favorites" || currentPlaylist?.id === -1 ? "text-[#ef4444]" : ""}`} style={{ color: currentView === "favorites" || currentPlaylist?.id === -1 ? '#ef4444' : undefined }} />
-              <div className="hidden md:flex flex-col items-start">
-                <span>Favorites</span>
-                <span className="text-[10px] text-outline">{favorites.length} tracks</span>
+            }} className={`w-full py-3 rounded-sm transition-all duration-300 ${currentView === "favorites" || currentPlaylist?.id === -1 ? "border-l-2 border-primary/70 bg-gradient-to-r from-primary/20 to-transparent text-primary/90" : "text-stone-400 font-normal opacity-80 hover:text-stone-200 hover:opacity-100"}`}>
+              <div className={`flex items-center ${isExpanded ? 'justify-start px-3 gap-x-4' : 'justify-center'}`}>
+                <Heart className={`w-5 h-5 shrink-0 ${currentView === "favorites" || currentPlaylist?.id === -1 ? "text-primary" : ""}`} />
+                {isExpanded && (
+                  <div className="flex flex-col items-start">
+                    <span className="text-sm">Favorites</span>
+                    <span className="text-[10px] opacity-60">{favorites.length} tracks</span>
+                  </div>
+                )}
               </div>
             </button>
-          </nav>
+</nav>
 
-          <div className="mt-4 px-1 md:px-4 pb-20 md:pb-24">
-            <div className="hidden md:flex items-center justify-between text-[11px] text-outline uppercase tracking-widest px-4 mb-4">
-              <span>Playlists</span>
-              <button onClick={() => setSidebarPlaylistView(v => v === "expanded" ? "compact" : "expanded")} className="hover:text-primary transition-colors">
-                {sidebarPlaylistView === "expanded" ? <ListMusic className="w-4 h-4" /> : <Home className="w-4 h-4" />}
-              </button>
-            </div>
+          <div className={`mt-4 pb-24 ${isExpanded ? 'px-4' : 'px-0'}`}>
+            {isExpanded && <div className="text-stone-500 uppercase tracking-widest text-[10px] font-semibold mb-3">PLAYLISTS</div>}
             
-            {sidebarPlaylistView === "expanded" ? (
-              <div className="space-y-1 max-h-[300px] overflow-y-auto pr-2">
-                {favorites.length > 0 && (
-                  <button 
-                    onClick={() => {
-                      setTracks(favorites.map(f => ({ ...f, id: f.id, title: f.title, artist: f.artist, album: f.album || 'Unknown', duration: f.duration || 0, cover: f.cover })));
-                      setCurrentPlaylist({ id: -1, name: 'Favorites', path: '', track_count: favorites.length, cover: undefined });
-                      setCurrentView("library");
-                    }}
-                    className={`w-full flex items-center gap-3 py-2 pl-2 md:pl-4 rounded-md hover:bg-white/5 transition-all group ${currentPlaylist?.id === -1 ? 'bg-white/10' : ''}`}
-                  >
-                    <div className="w-10 h-10 shrink-0 rounded-md bg-gradient-to-br from-[#ef4444]/50 to-[#991b1b]/50 flex items-center justify-center" style={{ boxShadow: currentPlaylist?.id === -1 ? '0 0 12px rgba(239,68,68,0.5)' : '0 0 8px rgba(239,68,68,0.3)' }}>
-                      <Heart className="w-5 h-5" style={{ color: '#ef4444', fill: '#ef4444' }} />
-                    </div>
-                    <div className="flex-1 text-left min-w-0">
-                      <div className="text-xs md:text-sm text-on-surface truncate group-hover:text-primary transition-colors">Favorites</div>
-                      <div className="text-[10px] text-outline truncate">{favorites.length} tracks</div>
-                    </div>
-                  </button>
-                )}
-                {playlists.map((playlist) => (
-                  <button 
-                    key={playlist.id}
-                    onClick={() => handleSelectPlaylist(playlist)}
-                    className="w-full flex items-center gap-3 py-2 pl-2 md:pl-4 rounded-md hover:bg-white/5 transition-all group"
-                  >
-                    <div className="w-10 h-10 shrink-0 rounded-md overflow-hidden bg-surface-container-high flex items-center justify-center">
-                      {playlistCovers?.[playlist.id] ? (
-                        <img src={playlistCovers[playlist.id]} alt="" className="w-full h-full object-cover" />
-                      ) : playlist.name.toLowerCase().includes('download') || playlist.name.toLowerCase().includes('down') ? (
-                        <Download className="w-5 h-5 text-outline" />
-                      ) : (
-                        <PlaylistIcon className="w-5 h-5 text-outline" />
-                      )}
-                    </div>
-                    <div className="flex-1 text-left min-w-0">
-                      <div className="text-xs md:text-sm text-on-surface truncate group-hover:text-primary transition-colors">{playlist.name}</div>
-                      <div className="text-[10px] text-outline truncate">{playlist.track_count} tracks</div>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            ) : (
-              <div className="grid grid-cols-2 gap-2 pr-2">
-                {favorites.length > 0 && (
-                  <button 
-                    onClick={() => {
-                      setTracks(favorites.map(f => ({ ...f, id: f.id, title: f.title, artist: f.artist, album: f.album || 'Unknown', duration: f.duration || 0, cover: f.cover })));
-                      setCurrentPlaylist({ id: -1, name: 'Favorites', path: '', track_count: favorites.length, cover: undefined });
-                      setCurrentView("library");
-                    }}
-className="aspect-square rounded-md bg-gradient-to-br from-[#ef4444]/50 to-[#991b1b]/50 group transition-all flex items-center justify-center" style={{ boxShadow: currentPlaylist?.id === -1 ? '0 0 12px rgba(239,68,68,0.5)' : 'none' }}
+            {isExpanded ? (
+                <div className="space-y-1 max-h-[300px] overflow-y-auto pr-2">
+                  {favorites.length > 0 && (
+                    <button 
+                      onClick={() => {
+                        setTracks(favorites.map(f => ({ ...f, id: f.id, title: f.title, artist: f.artist, album: f.album || 'Unknown', duration: f.duration || 0, cover: f.cover })));
+                        setCurrentPlaylist({ id: -1, name: 'Favorites', path: '', track_count: favorites.length, cover: undefined });
+                        setCurrentView("library");
+                      }}
+                      className={`w-full flex items-center gap-3 py-2 rounded-md hover:bg-white/5 transition-all group ${currentPlaylist?.id === -1 ? 'border-l-2 border-primary/70 bg-primary/10' : ''}`}
                     >
-                      <Heart className="w-8 h-8" style={{ color: '#ef4444', fill: '#ef4444' }} />
-                  </button>
-                )}
-                {playlists.map((playlist) => (
-                  <button 
-                    key={playlist.id}
-                    onClick={() => handleSelectPlaylist(playlist)}
-                    className="aspect-square rounded-md overflow-hidden bg-surface-container-high group hover:ring-2 hover:ring-primary/50 transition-all"
-                  >
-                    {playlistCovers?.[playlist.id] ? (
-                      <img src={playlistCovers[playlist.id]} alt="" className="w-full h-full object-cover" />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center">
-                        {playlist.name.toLowerCase().includes('download') || playlist.name.toLowerCase().includes('down') ? (
-                          <Download className="w-8 h-8 text-outline" />
+                      <div className="w-11 h-11 shrink-0 rounded-xl bg-gradient-to-br from-rose-950 via-rose-900 to-red-950 shadow-[inset_0_1px_1px_rgba(255,255,255,0.15),0_4px_12px_rgba(159,18,57,0.2)] flex items-center justify-center">
+                        <Heart className="w-5 h-5 text-rose-100" style={{ fill: '#fda4af' }} />
+                      </div>
+                      <div className="flex-1 text-left min-w-0">
+                        <div className="text-xs text-stone-200 truncate group-hover:text-primary transition-colors">Favorites</div>
+                        <div className="text-[10px] text-stone-500 truncate">{favorites.length} tracks</div>
+                      </div>
+                    </button>
+                  )}
+                  {playlists.map((playlist) => (
+                    <button 
+                      key={playlist.id}
+                      onClick={() => handleSelectPlaylist(playlist)}
+                      className={`w-full flex items-center gap-3 py-2 rounded-md hover:bg-white/5 transition-all group ${currentPlaylist?.id === playlist.id ? 'border-l-2 border-primary/70 bg-primary/10' : ''}`}
+                    >
+                      <div className="w-11 h-11 shrink-0 rounded-xl overflow-hidden bg-neutral-800 flex items-center justify-center">
+                        {playlistCovers?.[playlist.id] ? (
+                          <img src={playlistCovers[playlist.id]} alt="" className="w-full h-full object-cover" />
+                        ) : playlist.name.toLowerCase().includes('download') || playlist.name.toLowerCase().includes('down') ? (
+                          <Download className="w-5 h-5 text-stone-500" />
                         ) : (
-                          <PlaylistIcon className="w-8 h-8 text-outline" />
+                          <PlaylistIcon className="w-5 h-5 text-stone-500" />
                         )}
                       </div>
-                    )}
-                  </button>
-                ))}
-              </div>
-            )}
+                      <div className="flex-1 text-left min-w-0">
+                        <div className="text-xs text-stone-200 truncate group-hover:text-primary transition-colors">{playlist.name}</div>
+                        <div className="text-[10px] text-stone-500 truncate">{playlist.track_count} tracks</div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="flex flex-col items-center gap-3">
+                  {favorites.length > 0 && (
+                    <button 
+                      onClick={() => {
+                        setTracks(favorites.map(f => ({ ...f, id: f.id, title: f.title, artist: f.artist, album: f.album || 'Unknown', duration: f.duration || 0, cover: f.cover })));
+                        setCurrentPlaylist({ id: -1, name: 'Favorites', path: '', track_count: favorites.length, cover: undefined });
+                        setCurrentView("library");
+                      }}
+                      className="w-11 h-11 shrink-0 rounded-xl border border-white/10 bg-gradient-to-br from-rose-950 via-rose-900 to-red-950 shadow-[inset_0_1px_1px_rgba(255,255,255,0.15),0_4px_12px_rgba(159,18,57,0.2)] flex items-center justify-center hover:scale-105 transition-transform"
+                    >
+                      <Heart className="w-5 h-5 text-rose-100" style={{ fill: '#fda4af' }} />
+                    </button>
+                  )}
+                  {[...playlists].reverse().slice(0, 6).map((playlist) => (
+                    <button 
+                      key={playlist.id}
+                      onClick={() => handleSelectPlaylist(playlist)}
+                      className="w-11 h-11 shrink-0 rounded-xl border border-white/10 overflow-hidden bg-neutral-800 flex items-center justify-center hover:scale-105 transition-transform"
+                    >
+                      {playlistCovers?.[playlist.id] ? (
+                        <img src={playlistCovers[playlist.id]} alt="" className="w-full h-full object-cover" />
+                      ) : (
+                        <PlaylistIcon className="w-5 h-5 text-stone-500" />
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )
+}
           </div>
         </aside>
 
-        <main className="flex-1 relative h-[calc(100vh-3.5rem)] overflow-y-auto p-3 md:p-8 border-t border-white/[0.03]" style={{ marginLeft: sidebarWidth, marginRight: rightSidebarWidth, marginBottom: footerHeight }}>
+        <main className="flex-1 relative h-[calc(100vh-3.5rem)] overflow-y-auto p-3 md:p-8 border-t border-white/[0.04]" style={{ marginLeft: isExpanded ? 256 : 72, marginRight: rightSidebarWidth, marginBottom: footerHeight }}>
           <div className="fixed inset-0 pointer-events-none z-[-1] opacity-40 mix-blend-overlay" style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg viewBox=\'0 0 200 200\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cfilter id=\'noiseFilter\'%3E%3CfeTurbulence type=\'fractalNoise\' baseFrequency=\'0.85\' numOctaves=\'3\' stitchTiles=\'stitch\'/%3E%3C/filter%3E%3Crect width=\'100%25\' height=\'100%25\' filter=\'url(%23noiseFilter)\'/%3E%3C/svg%3E")'}}></div>
           <div className="fixed inset-0 bg-gradient-to-br from-primary/5 via-transparent to-secondary-container/5 pointer-events-none z-[-1]"></div>
           <div className="absolute top-0 right-0 w-[600px] h-[600px] bg-primary/5 rounded-full blur-[150px] pointer-events-none z-[-1]"></div>
@@ -2056,7 +2056,7 @@ className="aspect-square rounded-md bg-gradient-to-br from-[#ef4444]/50 to-[#991
         </main>
         
         <aside 
-          className="fixed right-0 bg-surface-container-lowest/95 border-l border-white/[0.03] flex flex-col z-40 shadow-[-10px_0_30px_-5px_rgba(0,0,0,0.8)]"
+          className="fixed right-0 bg-black/20 backdrop-blur-md border-l border-white/[0.04] flex flex-col z-40"
           style={{ width: rightSidebarWidth, top: titlebarHeight, height: `calc(100vh - ${titlebarHeight}px - ${footerHeight}px)`, background: `linear-gradient(180deg, ${sidebarBg} 0%, rgba(14, 14, 14, 1) 100%)` }}
         >
           <div 
@@ -2138,7 +2138,7 @@ className="aspect-square rounded-md bg-gradient-to-br from-[#ef4444]/50 to-[#991
         </aside>
       </div>
 
-      <footer className="fixed bottom-0 left-0 right-0 z-50 border-t border-white/[0.04] bg-surface-container-lowest/95 backdrop-blur-2xl" style={{ height: footerHeight }}>
+      <footer className="fixed bottom-0 left-0 right-0 z-50 border-t border-white/[0.04] bg-black/20 backdrop-blur-2xl" style={{ height: footerHeight }}>
         <div className="absolute top-0 left-0 w-full h-1 cursor-ns-resize hover:bg-primary/50 z-50" onMouseDown={(e) => {
           e.preventDefault();
           const startY = e.clientY;
@@ -2218,7 +2218,7 @@ className="aspect-square rounded-md bg-gradient-to-br from-[#ef4444]/50 to-[#991
                 <Monitor className="w-3.5 h-3.5" />
               </button>
               {showDeviceMenu && (
-                <div className="absolute bottom-full right-0 mb-2 w-56 bg-surface-container-lowest/95 backdrop-blur-xl border border-white/[0.08] rounded-xl shadow-2xl overflow-hidden z-[100]">
+                <div className="absolute bottom-full right-0 mb-2 w-56 bg-black/20 backdrop-blur-xl border border-white/[0.08] rounded-xl shadow-2xl overflow-hidden z-[100]">
                   <div className="p-2">
                     <div className="text-[9px] uppercase tracking-widest text-outline px-3 py-1.5">Output Device</div>
                     {audioDevices.length > 0 ? audioDevices.map(d => (
