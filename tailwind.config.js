@@ -7,13 +7,13 @@ export default {
   theme: {
     extend: {
       colors: {
-        'background': '#0d0406',
-        'surface': '#11080a',
-        'surface-dim': '#11080a',
-        'surface-container': '#1e0d11',
-        'surface-container-low': '#18080b',
-        'surface-container-lowest': '#0d0406',
-        'surface-container-high': '#2a2a2a',
+        'background': '#131112',
+        'surface': '#181617',
+        'surface-dim': '#181617',
+        'surface-container': '#252324',
+        'surface-container-low': '#1c1a1b',
+        'surface-container-lowest': '#131112',
+        'surface-container-high': '#2f2d2e',
         'surface-container-highest': '#353535',
         'surface-bright': '#393939',
         'surface-variant': '#353535',

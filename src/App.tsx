@@ -1074,6 +1074,8 @@ function App() {
   const [footerHeight, setFooterHeight] = useState(() => loadFromStorage("alora_footerHeight", 80));
   const [isExpanded, setIsExpanded] = useState(true);
   const [rightSidebarWidth, setRightSidebarWidth] = useState(300);
+  const [showQueue, setShowQueue] = useState(false);
+  const [recentPlaylistIds, setRecentPlaylistIds] = useState<number[]>(() => loadFromStorage("alora_recentPlaylists", []));
   const [sidebarBg, setSidebarBg] = useState<string>('#0e0e0e');
   
   const [tracks, setTracks] = useState<Track[]>(() => loadFromStorage(STORAGE_KEYS.tracks, []));
@@ -1695,6 +1697,11 @@ const startProgressTracking = () => {
         return updated;
       });
       setCurrentPlaylist({ ...playlist, cover: folderCover || undefined });
+      setRecentPlaylistIds(prev => {
+        const updated = [playlist.id, ...prev.filter(id => id !== playlist.id)].slice(0, 6);
+        saveToStorage("alora_recentPlaylists", updated);
+        return updated;
+      });
 
       setTimeout(async () => {
         if (cancelled || playlistLoadRef.current?.id !== loadId) return;
@@ -1795,7 +1802,7 @@ const startProgressTracking = () => {
   }
 
   return (
-    <div className="flex flex-col h-screen bg-bg text-on-surface overflow-hidden">
+    <div className="flex flex-col h-screen bg-gradient-to-br from-[#0c0507] via-[#0f0e0f] to-neutral-950 text-on-surface overflow-hidden">
       <audio
           ref={audioRef}
           crossOrigin="anonymous"
@@ -1807,7 +1814,7 @@ const startProgressTracking = () => {
       {showCreatePlaylist && <CreatePlaylistModal onClose={() => setShowCreatePlaylist(false)} onCreate={handleConfirmCreatePlaylist} />}
       {editingPlaylist && <EditPlaylistModal playlist={editingPlaylist} onClose={() => setEditingPlaylist(null)} onSave={handleSavePlaylist} onDelete={handleDeletePlaylist} />}
       
-      <header className={`fixed top-0 left-0 right-0 z-[60] bg-black/20 backdrop-blur-md border-b border-white/[0.04] flex items-center justify-between pl-4`} style={{ height: titlebarHeight }} data-tauri-drag-region>
+      <header className={`fixed top-0 left-0 right-0 z-[60] bg-black/20 backdrop-blur-xl border-b border-white/[0.04] flex items-center justify-between pl-4`} style={{ height: titlebarHeight }} data-tauri-drag-region>
         <div className="flex items-center gap-2">
           <button onClick={() => navigateTo("settings")} className="p-2 text-outline hover:text-primary transition-colors" title="Settings">
             <MoreHorizontal className="w-5 h-5" />
@@ -1862,7 +1869,7 @@ const startProgressTracking = () => {
       </header>
 
       <div className="flex flex-1" style={{ marginTop: titlebarHeight }}>
-        <aside className={`h-full bg-black/20 backdrop-blur-md border-r border-white/[0.04] transition-all duration-300 ease-in-out flex flex-col py-6 fixed left-0 z-40 ${isExpanded ? 'w-64 px-4' : 'w-[72px] px-0'}`} style={{ top: titlebarHeight, height: `calc(100vh - ${titlebarHeight}px)` }}>
+        <aside className={`h-full bg-black/25 backdrop-blur-xl border-r border-white/[0.04] transition-all duration-300 ease-in-out flex flex-col py-6 fixed left-0 z-40 ${isExpanded ? 'w-64 px-4' : 'w-[72px] px-0'}`} style={{ top: titlebarHeight, height: `calc(100vh - ${titlebarHeight}px)` }}>
           <div className={`flex ${isExpanded ? 'justify-end' : 'justify-center'} mb-4`}>
             <button 
               onClick={() => setIsExpanded(!isExpanded)}
@@ -1960,16 +1967,16 @@ const startProgressTracking = () => {
                         setCurrentPlaylist({ id: -1, name: 'Favorites', path: '', track_count: favorites.length, cover: undefined });
                         setCurrentView("library");
                       }}
-                      className="w-11 h-11 shrink-0 rounded-xl border border-white/10 bg-gradient-to-br from-rose-950 via-rose-900 to-red-950 shadow-[inset_0_1px_1px_rgba(255,255,255,0.15),0_4px_12px_rgba(159,18,57,0.2)] flex items-center justify-center hover:scale-105 transition-transform"
+                      className="w-11 h-11 shrink-0 rounded-xl border border-white/10 bg-gradient-to-br from-rose-950 via-rose-900 to-red-950 shadow-[inset_0_1px_1px_rgba(255,255,255,0.15),0_4px_12px_rgba(159,18,57,0.2),0_4px_16px_rgba(0,0,0,0.4)] flex items-center justify-center hover:scale-105 transition-transform"
                     >
                       <Heart className="w-5 h-5 text-rose-100" style={{ fill: '#fda4af' }} />
                     </button>
                   )}
-                  {[...playlists].reverse().slice(0, 6).map((playlist) => (
+                  {recentPlaylistIds.map(id => playlists.find(p => p.id === id)).filter((p): p is Playlist => p !== undefined).map((playlist) => (
                     <button 
                       key={playlist.id}
                       onClick={() => handleSelectPlaylist(playlist)}
-                      className="w-11 h-11 shrink-0 rounded-xl border border-white/10 overflow-hidden bg-neutral-800 flex items-center justify-center hover:scale-105 transition-transform"
+                      className="w-11 h-11 shrink-0 rounded-xl border border-white/10 overflow-hidden bg-neutral-800 shadow-lg flex items-center justify-center hover:scale-105 transition-transform"
                     >
                       {playlistCovers?.[playlist.id] ? (
                         <img src={playlistCovers[playlist.id]} alt="" className="w-full h-full object-cover" />
@@ -1984,7 +1991,7 @@ const startProgressTracking = () => {
           </div>
         </aside>
 
-        <main className="flex-1 relative h-[calc(100vh-3.5rem)] overflow-y-auto p-3 md:p-8 border-t border-white/[0.04]" style={{ marginLeft: isExpanded ? 256 : 72, marginRight: rightSidebarWidth, marginBottom: footerHeight }}>
+        <main className="flex-1 relative h-[calc(100vh-3.5rem)] overflow-y-auto p-2 md:p-4 border-t border-white/[0.04]" style={{ marginLeft: isExpanded ? 256 : 72, marginRight: rightSidebarWidth, marginBottom: footerHeight }}>
           <div className="fixed inset-0 pointer-events-none z-[-1] opacity-40 mix-blend-overlay" style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg viewBox=\'0 0 200 200\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cfilter id=\'noiseFilter\'%3E%3CfeTurbulence type=\'fractalNoise\' baseFrequency=\'0.85\' numOctaves=\'3\' stitchTiles=\'stitch\'/%3E%3C/filter%3E%3Crect width=\'100%25\' height=\'100%25\' filter=\'url(%23noiseFilter)\'/%3E%3C/svg%3E")'}}></div>
           <div className="fixed inset-0 bg-gradient-to-br from-primary/5 via-transparent to-secondary-container/5 pointer-events-none z-[-1]"></div>
           <div className="absolute top-0 right-0 w-[600px] h-[600px] bg-primary/5 rounded-full blur-[150px] pointer-events-none z-[-1]"></div>
@@ -2056,7 +2063,7 @@ const startProgressTracking = () => {
         </main>
         
         <aside 
-          className="fixed right-0 bg-black/20 backdrop-blur-md border-l border-white/[0.04] flex flex-col z-40"
+          className="fixed right-0 bg-black/25 backdrop-blur-xl border-l border-white/[0.04] flex flex-col z-40"
           style={{ width: rightSidebarWidth, top: titlebarHeight, height: `calc(100vh - ${titlebarHeight}px - ${footerHeight}px)`, background: `linear-gradient(180deg, ${sidebarBg} 0%, rgba(14, 14, 14, 1) 100%)` }}
         >
           <div 
@@ -2079,13 +2086,60 @@ const startProgressTracking = () => {
           />
           <div className="p-4 flex flex-col h-full overflow-hidden">
             <div className="flex items-center justify-between mb-4">
-              <span className="text-[11px] uppercase tracking-widest text-outline">Now Playing</span>
+              <span className="text-[11px] uppercase tracking-widest text-zinc-300 drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)]">{showQueue ? "Queue" : "Now Playing"}</span>
+              <button onClick={() => setShowQueue(!showQueue)} className="text-[10px] uppercase tracking-wider text-outline hover:text-primary transition-colors">
+                {showQueue ? "Now Playing" : "Show Queue"}
+              </button>
             </div>
               
-            {currentTrack ? (
+            {showQueue ? (
+              <div className="flex-1 overflow-y-auto space-y-1">
+                {(() => {
+                  const sorted = getSortedTracks();
+                  const currentId = currentTrack?.id;
+                  if (sorted.length === 0) return <div className="text-xs text-outline text-center py-8">No tracks in queue</div>;
+
+                  let order: number[];
+                  if (trackOrderRef.current.length > 0 && currentId && trackOrderRef.current.includes(currentId)) {
+                    order = trackOrderRef.current;
+                  } else {
+                    order = sorted.map(t => t.id);
+                  }
+
+                  const currentIdx = currentId ? order.indexOf(currentId) : -1;
+                  const orderedTracks = currentIdx >= 0
+                    ? [...order.slice(currentIdx), ...order.slice(0, currentIdx)]
+                    : order;
+
+                  return orderedTracks.map((id) => {
+                    const track = sorted.find(t => t.id === id);
+                    if (!track) return null;
+                    return (
+                      <button
+                        key={track.id}
+                        onClick={() => playTrack(track)}
+                        className={`w-full flex items-center gap-3 p-2 rounded-lg transition-all text-left group ${track.id === currentId ? 'bg-white/5 text-primary' : 'text-outline hover:text-on-surface hover:bg-white/5'}`}
+                      >
+                        <div className="w-8 h-8 rounded overflow-hidden shrink-0 bg-surface-container">
+                          {track.cover ? (
+                            <img src={track.cover} alt="" className="w-full h-full object-cover" />
+                          ) : (
+                            <Music className="w-4 h-4 m-2 opacity-40" />
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className={`text-xs truncate ${track.id === currentId ? 'text-primary' : 'text-on-surface'}`}>{track.title}</div>
+                          <div className="text-[10px] truncate opacity-60">{track.artist}</div>
+                        </div>
+                      </button>
+                    );
+                  });
+                })()}
+              </div>
+            ) : currentTrack ? (
               <div className="flex flex-col h-full overflow-hidden">
                 <div className="text-center mb-3">
-                  <button onClick={() => { setSearchQuery(currentTrack.artist); setCurrentView("library"); }} className="text-sm text-outline font-medium hover:text-primary transition-colors">{currentTrack.artist}</button>
+                  <button onClick={() => { setSearchQuery(currentTrack.artist); setCurrentView("library"); }} className="text-sm text-zinc-300 drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)] font-medium hover:text-primary transition-colors">{currentTrack.artist}</button>
                 </div>
                 
                 <div className="w-full aspect-square rounded-xl overflow-hidden shadow-[0_8px_30px_rgba(0,0,0,0.5)] mb-4 bg-surface-container shrink-0">
@@ -2138,7 +2192,7 @@ const startProgressTracking = () => {
         </aside>
       </div>
 
-      <footer className="fixed bottom-0 left-0 right-0 z-50 border-t border-white/[0.04] bg-black/20 backdrop-blur-2xl" style={{ height: footerHeight }}>
+      <footer className="fixed bottom-0 left-0 right-0 z-50 border-t border-white/[0.04] bg-neutral-950" style={{ height: footerHeight }}>
         <div className="absolute top-0 left-0 w-full h-1 cursor-ns-resize hover:bg-primary/50 z-50" onMouseDown={(e) => {
           e.preventDefault();
           const startY = e.clientY;
