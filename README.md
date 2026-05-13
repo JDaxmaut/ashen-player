@@ -21,26 +21,26 @@
 
 ---
 
-### ✦ About
+### About
 
-Ashen is a desktop music player built with **Tauri v2**, **React**, and **Rust**. Every pixel is soaked in a gothic-rock aesthetic — deep burgundy-black gradients, dark gold accents (`#f7bd48`), and glassmorphism panels that blur the line between the digital and the divine.
+Ashen is a desktop music player built with **Tauri v2**, **React**, and **Rust**. Every pixel is soaked in a gothic-rock aesthetic -- deep burgundy-black gradients, dark gold accents (`#f7bd48`), and glassmorphism panels that blur the line between the digital and the divine.
 
 Its soul lives in the shadows: twelve-inch vinyl mockups, rose-tinted highlights, and ultra-thin borders that barely hold the light.
 
-### ✦ Features
+### Features
 
-- **🎵 Local music playback** — MP3, FLAC, WAV, M4A, OGG, and more
-- **📂 Folder-based library** — automatically scans your music directories with album art extraction
-- **🔀 Smart queue** — shuffle, repeat (all/one), and ordered playback with a queue panel
-- **❤️ Favorites** — save and revisit tracks with a dedicated gradient-styled button
-- **📜 Recent playlists** — MRU list with cover stacks, persisted to localStorage
-- **📋 Track metadata** — artist, album, duration, format, path, and embedded cover art
-- **🎚️ Loudness normalization** — backend-powered EBU R128 analysis (LUFS)
-- **🔍 Search** — filter your library by title, artist, or album
-- **📱 Resizable panels** — collapsible sidebar, draggable footer, and a resizable right panel
-- **🖤 Glassmorphism UI** — every surface is `backdrop-blur-xl` with `border-white/[0.04]`
+- **Local music playback** -- MP3, FLAC, WAV, M4A, OGG, and more
+- **Folder-based library** -- automatically scans your music directories with album art extraction
+- **Smart queue** -- shuffle, repeat (all/one), and ordered playback with a queue panel
+- **Favorites** -- save and revisit tracks with a dedicated gradient-styled button
+- **Recent playlists** -- MRU list with cover stacks, persisted to localStorage
+- **Track metadata** -- artist, album, duration, format, path, and embedded cover art
+- **Loudness normalization** -- backend-powered EBU R128 analysis (LUFS)
+- **Search** -- filter your library by title, artist, or album
+- **Resizable panels** -- collapsible sidebar, draggable footer, and a resizable right panel
+- **Glassmorphism UI** -- every surface is `backdrop-blur-xl` with `border-white/[0.04]`
 
-### ✦ Tech
+### Tech
 
 | Layer | Stack |
 |---|---|
@@ -50,7 +50,7 @@ Its soul lives in the shadows: twelve-inch vinyl mockups, rose-tinted highlights
 | Audio | loudness-rs (EBU R128), Web Audio API progress |
 | Icons | lucide-react |
 
-### ✦ Build
+### Build
 
 ```bash
 git clone https://github.com/JDaxmaut/ashen-player.git
@@ -64,8 +64,4 @@ npm run tauri build  # production build
 
 <p align="center">
   <img src="kawaii-darksouls.gif" width="250"/>
-</p>
-
-<p align="center">
-  <sub>built with 🩸 and darkness</sub>
 </p>
