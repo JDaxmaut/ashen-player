@@ -15,6 +15,10 @@
   A gothic-rock themed music player with glassmorphism UI — built with Tauri v2, React, and Rust.
 </p>
 
+<p align="center">
+  <img src="image.png" alt="Ashen screenshot" width="700"/>
+</p>
+
 ---
 
 <p align="center">
