@@ -1529,8 +1529,10 @@ function App() {
 
     if (repeatMode === "one") {
       if (audioRef.current) {
+        audioRef.current.pause();
         audioRef.current.currentTime = 0;
         audioRef.current.play().catch(e => { if (e.name !== 'AbortError') console.error("Play error:", e); });
+        setProgress(0);
       }
       return;
     }
@@ -1819,7 +1821,7 @@ const startProgressTracking = () => {
       <audio
           ref={audioRef}
           crossOrigin="anonymous"
-          onEnded={() => nextTrack()}
+          onEnded={() => nextTrackFnRef.current?.()}
         />
       
       
