@@ -45,7 +45,7 @@ Every surface is `backdrop-blur-xl` with `border-white/[0.04]`, ultra-thin borde
 |---|---|
 | Frontend | React 19, TypeScript, Tailwind CSS, Vite |
 | Backend | Rust, Tauri v2, `lofty` (metadata), `reqwest` |
-| APIs | Yandex Music (artist search) |
+| APIs |yt-dlp|
 | Audio | loudness-rs (EBU R128), Web Audio API progress |
 | Icons | lucide-react |
 
