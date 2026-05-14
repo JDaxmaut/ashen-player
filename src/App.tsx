@@ -1821,7 +1821,7 @@ const startProgressTracking = () => {
             <div className="h-full bg-gradient-to-r from-primary to-tertiary-container animate-[loading_1.5s_ease-in-out_infinite]"></div>
           </div>
         </div>
-        <h1 className="text-3xl font-bold text-white tracking-tight mb-2">Player</h1>
+        <h1 className="text-3xl font-bold text-white tracking-tight mb-2">Ashen</h1>
         <p className="text-primary text-sm uppercase tracking-widest">Loading...</p>
         <style>{`
           @keyframes loading {
