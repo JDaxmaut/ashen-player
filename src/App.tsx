@@ -1087,6 +1087,8 @@ function App() {
   const [progress, setProgress] = useState(0);
   const [shuffleEnabled, setShuffleEnabled] = useState(() => loadFromStorage(STORAGE_KEYS.shuffle, false));
   const [repeatMode, setRepeatMode] = useState<"none" | "all" | "one">(() => loadFromStorage(STORAGE_KEYS.repeatMode, "none"));
+  const repeatRef = useRef(repeatMode);
+  repeatRef.current = repeatMode;
   const [favorites, setFavorites] = useState<Favorite[]>(() => loadFromStorage(STORAGE_KEYS.favorites, []));
   const [history, setHistory] = useState<PlaybackHistory[]>(() => loadToStorage(STORAGE_KEYS.history, []));
   const loudnessMap = new Map<number, number>();
@@ -1527,12 +1529,18 @@ function App() {
   const nextTrack = () => {
     if (!currentTrack) return;
 
-    if (repeatMode === "one") {
+    const currentRepeat = repeatRef.current;
+    console.log(`[nextTrack] mode=${currentRepeat} shuffle=${shuffleEnabled} track="${currentTrack.title}"`);
+
+    if (currentRepeat === "one") {
       if (audioRef.current) {
         audioRef.current.pause();
         audioRef.current.currentTime = 0;
         audioRef.current.play().catch(e => { if (e.name !== 'AbortError') console.error("Play error:", e); });
         setProgress(0);
+        trackTriggeredRef.current = false;
+        transitioningRef.current = false;
+        console.log("[nextTrack] repeat-one: reset to 0");
       }
       return;
     }
@@ -1555,11 +1563,19 @@ function App() {
     if (nextIdx < trackOrderRef.current.length) {
       const nextId = trackOrderRef.current[nextIdx];
       const nextT = sorted.find(t => t.id === nextId);
-      if (nextT) playTrack(nextT);
-    } else if (repeatMode === "all") {
+      if (nextT) {
+        console.log(`[nextTrack] advancing to track ${nextT.title}`);
+        playTrack(nextT);
+      }
+    } else if (currentRepeat === "all") {
       const firstId = trackOrderRef.current[0];
       const firstT = sorted.find(t => t.id === firstId);
-      if (firstT) playTrack(firstT);
+      if (firstT) {
+        console.log(`[nextTrack] repeat-all: wrapping to ${firstT.title}`);
+        playTrack(firstT);
+      }
+    } else {
+      console.log("[nextTrack] end of list, no repeat — stopping");
     }
   };
 
@@ -1598,13 +1614,15 @@ const startProgressTracking = () => {
       if (transitioningRef.current || trackTriggeredRef.current) return;
       
       if (gaplessEnabled && currentTime >= duration - 0.3) {
+        console.log(`[progressInterval] gapless trigger at ${currentTime.toFixed(1)}s / ${duration.toFixed(1)}s`);
         trackTriggeredRef.current = true;
         transitioningRef.current = true;
-        nextTrack();
+        nextTrackFnRef.current?.();
       } else if (!gaplessEnabled && currentProgress >= 99) {
+        console.log(`[progressInterval] 99% trigger at ${currentProgress.toFixed(1)}%`);
         trackTriggeredRef.current = true;
         transitioningRef.current = true;
-        nextTrack();
+        nextTrackFnRef.current?.();
       }
     }, 200);
   };
@@ -1821,7 +1839,10 @@ const startProgressTracking = () => {
       <audio
           ref={audioRef}
           crossOrigin="anonymous"
-          onEnded={() => nextTrackFnRef.current?.()}
+          onEnded={() => {
+            console.log("[onEnded] fired");
+            nextTrackFnRef.current?.();
+          }}
         />
       
       
