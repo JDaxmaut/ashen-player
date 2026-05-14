@@ -1526,10 +1526,18 @@ function App() {
 
   const nextTrack = () => {
     if (!currentTrack) return;
+
+    if (repeatMode === "one") {
+      if (audioRef.current) {
+        audioRef.current.currentTime = 0;
+        audioRef.current.play().catch(e => { if (e.name !== 'AbortError') console.error("Play error:", e); });
+      }
+      return;
+    }
+
     const sorted = getSortedTracks();
     
     if (shuffleEnabled) {
-      if (repeatMode === "one") { playTrack(currentTrack); return; }
       const nextIdx = Math.floor(Math.random() * sorted.length);
       if (sorted[nextIdx]) playTrack(sorted[nextIdx]);
       return;
@@ -1550,8 +1558,6 @@ function App() {
       const firstId = trackOrderRef.current[0];
       const firstT = sorted.find(t => t.id === firstId);
       if (firstT) playTrack(firstT);
-    } else if (repeatMode === "one") {
-      playTrack(currentTrack);
     }
   };
 
