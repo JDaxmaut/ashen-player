@@ -1529,6 +1529,7 @@ function App() {
     const sorted = getSortedTracks();
     
     if (shuffleEnabled) {
+      if (repeatMode === "one") { playTrack(currentTrack); return; }
       const nextIdx = Math.floor(Math.random() * sorted.length);
       if (sorted[nextIdx]) playTrack(sorted[nextIdx]);
       return;
@@ -1545,6 +1546,12 @@ function App() {
       const nextId = trackOrderRef.current[nextIdx];
       const nextT = sorted.find(t => t.id === nextId);
       if (nextT) playTrack(nextT);
+    } else if (repeatMode === "all") {
+      const firstId = trackOrderRef.current[0];
+      const firstT = sorted.find(t => t.id === firstId);
+      if (firstT) playTrack(firstT);
+    } else if (repeatMode === "one") {
+      playTrack(currentTrack);
     }
   };
 
