@@ -710,9 +710,17 @@ function LibraryPage({
   const durationText = hours > 0 ? `${hours} hr ${minutes} min` : `${minutes} min`;
   
   const sortedTracks = [...tracks].sort((a, b) => {
+    if (sortBy === "album") {
+      const albumCmp = a.album.localeCompare(b.album);
+      if (albumCmp !== 0) return albumCmp;
+      return a.title.localeCompare(b.title);
+    }
     if (sortBy === "title") return a.title.localeCompare(b.title);
-    if (sortBy === "artist") return a.artist.localeCompare(b.artist);
-    if (sortBy === "album") return a.album.localeCompare(b.album);
+    if (sortBy === "artist") {
+      const artistCmp = a.artist.localeCompare(b.artist);
+      if (artistCmp !== 0) return artistCmp;
+      return a.album.localeCompare(b.album);
+    }
     if (sortBy === "duration") return (a.duration || 0) - (b.duration || 0);
     return 0;
   });
@@ -1094,6 +1102,9 @@ function App() {
   const loudnessMap = new Map<number, number>();
   const [trackLoudness, setTrackLoudness] = useState(loudnessMap);
   const [sortBy, setSortBy] = useState<"title" | "artist" | "album" | "duration">("title");
+  useEffect(() => {
+    trackOrderRef.current = [];
+  }, [sortBy]);
   const [dominantColor, setDominantColor] = useState<string>("");
   const [gaplessEnabled, setGaplessEnabled] = useState(true);
   const [normEnabled, setNormEnabled] = useState(() => loadFromStorage("alora_normEnabled", true));
@@ -1329,14 +1340,9 @@ function App() {
 
   useEffect(() => {
     if (currentTrack) {
-      activeSrcRef.current = "";
       setProgress(0);
       if (audioRef.current) {
         audioRef.current.currentTime = 0;
-      }
-      stopProgressTracking();
-      if (isPlaying) {
-        setTimeout(() => startProgressTracking(), 50);
       }
     }
   }, [currentTrack]);
@@ -1441,6 +1447,10 @@ function App() {
   }, []);
 
   const playTrack = useCallback(async (track: Track) => {
+    if (trackOrderRef.current.length === 0) {
+      const sorted = getSortedTracks();
+      trackOrderRef.current = sorted.map(t => t.id);
+    }
     let updatedTrack = track;
     
     if (!track.artist || track.artist === 'Unknown Artist' || !track.album || track.album === 'Unknown Album') {
@@ -1490,6 +1500,8 @@ function App() {
           }
         };
         audioRef.current.play().catch(e => { if (e.name !== 'AbortError') console.error("Play error:", e); });
+        activeSrcRef.current = src;
+        startProgressTracking();
         
         if ('mediaSession' in navigator) {
           navigator.mediaSession.metadata = new MediaMetadata({
@@ -1518,9 +1530,17 @@ function App() {
   const getSortedTracks = () => {
     const arr = filteredTracks.length > 0 ? filteredTracks : tracks;
     return [...arr].sort((a, b) => {
+      if (sortBy === "album") {
+        const albumCmp = a.album.localeCompare(b.album);
+        if (albumCmp !== 0) return albumCmp;
+        return a.title.localeCompare(b.title);
+      }
       if (sortBy === "title") return a.title.localeCompare(b.title);
-      if (sortBy === "artist") return a.artist.localeCompare(b.artist);
-      if (sortBy === "album") return a.album.localeCompare(b.album);
+      if (sortBy === "artist") {
+        const artistCmp = a.artist.localeCompare(b.artist);
+        if (artistCmp !== 0) return artistCmp;
+        return a.album.localeCompare(b.album);
+      }
       if (sortBy === "duration") return (a.duration || 0) - (b.duration || 0);
       return 0;
     });
@@ -1545,15 +1565,15 @@ function App() {
       return;
     }
 
-    const sorted = getSortedTracks();
-    
     if (shuffleEnabled) {
+      const sorted = getSortedTracks();
       const nextIdx = Math.floor(Math.random() * sorted.length);
       if (sorted[nextIdx]) playTrack(sorted[nextIdx]);
       return;
     }
     
-    if (trackOrderRef.current.length === 0 || !trackOrderRef.current.includes(currentTrack.id)) {
+    if (trackOrderRef.current.length === 0) {
+      const sorted = getSortedTracks();
       trackOrderRef.current = sorted.map(t => t.id);
     }
     
@@ -1562,12 +1582,14 @@ function App() {
     
     if (nextIdx < trackOrderRef.current.length) {
       const nextId = trackOrderRef.current[nextIdx];
+      const sorted = getSortedTracks();
       const nextT = sorted.find(t => t.id === nextId);
       if (nextT) {
         console.log(`[nextTrack] advancing to track ${nextT.title}`);
         playTrack(nextT);
       }
-    } else if (currentRepeat === "all") {
+    } else if (currentRepeat === "all" && trackOrderRef.current.length > 0) {
+      const sorted = getSortedTracks();
       const firstId = trackOrderRef.current[0];
       const firstT = sorted.find(t => t.id === firstId);
       if (firstT) {
@@ -1581,10 +1603,16 @@ function App() {
 
   const prevTrack = () => {
     if (!currentTrack) return;
+    if (trackOrderRef.current.length === 0) {
+      const sorted = getSortedTracks();
+      trackOrderRef.current = sorted.map(t => t.id);
+    }
+    const currentIdx = trackOrderRef.current.indexOf(currentTrack.id);
+    const prevIdx = (currentIdx - 1 + trackOrderRef.current.length) % trackOrderRef.current.length;
+    const prevId = trackOrderRef.current[prevIdx];
     const sorted = getSortedTracks();
-    const currentIndex = sorted.findIndex(t => t.id === currentTrack.id);
-    const prevIndex = (currentIndex - 1 + sorted.length) % sorted.length;
-    if (sorted[prevIndex]) playTrack(sorted[prevIndex]);
+    const prevT = sorted.find(t => t.id === prevId);
+    if (prevT) playTrack(prevT);
   };
 
   useEffect(() => {
@@ -2135,12 +2163,7 @@ const startProgressTracking = () => {
                   const currentId = currentTrack?.id;
                   if (sorted.length === 0) return <div className="text-xs text-outline text-center py-8">No tracks in queue</div>;
 
-                  let order: number[];
-                  if (trackOrderRef.current.length > 0 && currentId && trackOrderRef.current.includes(currentId)) {
-                    order = trackOrderRef.current;
-                  } else {
-                    order = sorted.map(t => t.id);
-                  }
+                  const order = trackOrderRef.current.length > 0 ? trackOrderRef.current : sorted.map(t => t.id);
 
                   const currentIdx = currentId ? order.indexOf(currentId) : -1;
                   const orderedTracks = currentIdx >= 0
