@@ -22,7 +22,6 @@
         "fullscreen": false,
         "decorations": false,
         "transparent": false,
-        "center": true,
         "backgroundColor": "#0e0e0e",
         "devtools": true
       }

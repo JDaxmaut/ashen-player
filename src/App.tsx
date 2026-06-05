@@ -383,8 +383,8 @@ function SearchPage({ onPlayTrack }: { onPlayTrack: (track: Track) => void }) {
   );
 }
 
-function SettingsPage({ libraryPath, setLibraryPath, onSave, gaplessEnabled, setGaplessEnabled, normEnabled, setNormEnabled, eqEnabled, setEqEnabled, eqPreset, setEqPreset, eqBands, setEqBands, EQ_PRESETS, EQ_FREQUENCIES }: { 
-  libraryPath: string; 
+function SettingsPage({ libraryPath, setLibraryPath, onSave, gaplessEnabled, setGaplessEnabled, normEnabled, setNormEnabled, eqEnabled, setEqEnabled, eqPreset, setEqPreset, eqBands, setEqBands, EQ_PRESETS, EQ_FREQUENCIES, optimizedMode, setOptimizedMode }: {
+  libraryPath: string;
   setLibraryPath: (path: string) => void;
   onSave: () => void;
   gaplessEnabled: boolean;
@@ -399,6 +399,8 @@ function SettingsPage({ libraryPath, setLibraryPath, onSave, gaplessEnabled, set
   setEqBands: (v: number[]) => void;
   EQ_PRESETS: Record<string, number[]>;
   EQ_FREQUENCIES: number[];
+  optimizedMode: boolean;
+  setOptimizedMode: (v: boolean) => void;
 }) {
   const [activeTab, setActiveTab] = useState("general");
   const [startupEnabled, setStartupEnabled] = useState(false);
@@ -468,11 +470,23 @@ function SettingsPage({ libraryPath, setLibraryPath, onSave, gaplessEnabled, set
                     <div className="text-on-surface">Minimize to tray</div>
                     <div className="text-outline text-sm">Keep running in the background when closed</div>
                   </div>
-                  <button 
+                  <button
                     onClick={() => { setTrayEnabled(!trayEnabled); saveToStorage("trayEnabled", !trayEnabled); }}
                     className={`w-12 h-6 rounded-full relative transition-colors ${trayEnabled ? "bg-primary-container" : "bg-surface-container-high"}`}
                   >
                     <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform ${trayEnabled ? "right-1" : "left-1"}`}></div>
+                  </button>
+                </div>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-on-surface">Performance mode</div>
+                    <div className="text-outline text-sm">Skip cover art in playlist, load only for the now-playing sidebar</div>
+                  </div>
+                  <button
+                    onClick={() => { setOptimizedMode(!optimizedMode); saveToStorage("alora_optimizedMode", !optimizedMode); }}
+                    className={`w-12 h-6 rounded-full relative transition-colors ${optimizedMode ? "bg-primary-container" : "bg-surface-container-high"}`}
+                  >
+                    <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform ${optimizedMode ? "right-1" : "left-1"}`}></div>
                   </button>
                 </div>
               </div>
@@ -667,9 +681,9 @@ function PlaylistsPage({ playlists, playlistCovers, onSelectPlaylist, onCreatePl
   );
 }
 
-function LibraryPage({ 
-  tracks, 
-  currentTrack, 
+function LibraryPage({
+  tracks,
+  currentTrack,
   isPlaying,
   onPlayTrack,
   onPlayAll,
@@ -685,6 +699,7 @@ function LibraryPage({
   playlistCovers,
   onSelectPlaylist,
   dominantColor,
+  optimizedMode,
 }: { 
   tracks: Track[];
   currentTrack: Track | null;
@@ -703,6 +718,7 @@ function LibraryPage({
   playlistCovers?: Record<number, string>;
   onSelectPlaylist?: (playlist: Playlist) => void;
   dominantColor?: string;
+  optimizedMode?: boolean;
 }) {
   const totalDuration = tracks.reduce((acc, t) => acc + (t.duration || 0), 0);
   const hours = Math.floor(totalDuration / 3600);
@@ -911,7 +927,7 @@ if (!playlistName && allPlaylists && allPlaylists.length > 0) {
                 </div>
                 <div className="flex items-center gap-3 overflow-hidden">
                   <div className="w-8 h-8 rounded bg-surface-container-high flex items-center justify-center shrink-0 overflow-hidden">
-                    {track.cover ? <img src={track.cover} alt="" className="w-full h-full object-cover" /> : <Music className="w-4 h-4 text-outline" />}
+                    {!optimizedMode && track.cover ? <img src={track.cover} alt="" className="w-full h-full object-cover" /> : <Music className="w-4 h-4 text-outline" />}
                   </div>
                   <div className="truncate">
                     <div className={`text-xs font-medium truncate ${currentTrack?.id === track.id ? "text-primary" : "text-on-surface group-hover:text-primary transition-colors"}`}>
@@ -1108,6 +1124,7 @@ function App() {
   const [dominantColor, setDominantColor] = useState<string>("");
   const [gaplessEnabled, setGaplessEnabled] = useState(true);
   const [normEnabled, setNormEnabled] = useState(() => loadFromStorage("alora_normEnabled", true));
+  const [optimizedMode, setOptimizedMode] = useState(() => loadFromStorage("alora_optimizedMode", false));
   
   const EQ_PRESETS: Record<string, number[]> = {
     "Flat": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
@@ -1457,7 +1474,7 @@ function App() {
       try {
         const meta = await invoke<{ title: string; artist: string; album: string; duration: number; cover: string | null } | null>("get_audio_metadata", { path: track.path });
         if (meta) {
-          updatedTrack = { ...track, title: meta.title, artist: meta.artist, album: meta.album, duration: meta.duration || track.duration, cover: meta.cover || track.cover };
+          updatedTrack = { ...track, title: meta.title, artist: meta.artist, album: meta.album, duration: meta.duration || track.duration, cover: optimizedMode ? undefined : (meta.cover || track.cover) };
           setTracks(prev => {
             const updated = prev.map(t => t.id === track.id ? updatedTrack : t);
             saveToStorageAsync(STORAGE_KEYS.tracks, updated);
@@ -1465,6 +1482,13 @@ function App() {
           });
         }
       } catch (e) { console.error("Failed to load metadata:", e); }
+    }
+
+    if (optimizedMode && !updatedTrack.cover) {
+      try {
+        const cover = await invoke<string | null>("get_audio_cover", { path: updatedTrack.path });
+        if (cover) updatedTrack = { ...updatedTrack, cover };
+      } catch { /* no cover */ }
     }
     
     if (normEnabled && !trackLoudness.has(updatedTrack.id) && !analyzingRef.current.has(updatedTrack.id)) {
@@ -1515,7 +1539,7 @@ function App() {
         console.error("Failed to play:", e);
       }
     }
-  }, [addToHistory]);
+  }, [addToHistory, normEnabled, optimizedMode]);
 
   const playAll = () => {
     const sorted = getSortedTracks();
@@ -1771,17 +1795,26 @@ const startProgressTracking = () => {
           if (cancelled || playlistLoadRef.current?.id !== loadId) return;
           const track = newTracks[i];
           const cached = existingMeta.get(track.path);
-          if (cached && cached.artist !== 'Unknown Artist' && cached.cover) {
-            updatedTracks.push(cached);
+          if (cached && cached.artist !== 'Unknown Artist' && (optimizedMode || cached.cover)) {
+            updatedTracks.push(optimizedMode ? { ...cached, cover: undefined } : cached);
             continue;
           }
           if (cancelled || playlistLoadRef.current?.id !== loadId) return;
           try {
-            const meta = await invoke<{ title: string; artist: string; album: string; duration: number; cover: string | null; lyrics: string | null } | null>("get_audio_metadata", { path: track.path });
-            if (meta && !cancelled && playlistLoadRef.current?.id === loadId) {
-              updatedTracks.push({ ...track, title: meta.title, artist: meta.artist, album: meta.album, duration: meta.duration, cover: meta.cover || undefined, lyrics: meta.lyrics || undefined });
+            if (optimizedMode) {
+              const meta = await invoke<{ title: string; artist: string; album: string; duration: number; lyrics: string | null } | null>("get_audio_metadata_no_cover", { path: track.path });
+              if (meta && !cancelled && playlistLoadRef.current?.id === loadId) {
+                updatedTracks.push({ ...track, title: meta.title, artist: meta.artist, album: meta.album, duration: meta.duration, cover: undefined, lyrics: meta.lyrics || undefined });
+              } else {
+                updatedTracks.push(track);
+              }
             } else {
-              updatedTracks.push(track);
+              const meta = await invoke<{ title: string; artist: string; album: string; duration: number; cover: string | null; lyrics: string | null } | null>("get_audio_metadata", { path: track.path });
+              if (meta && !cancelled && playlistLoadRef.current?.id === loadId) {
+                updatedTracks.push({ ...track, title: meta.title, artist: meta.artist, album: meta.album, duration: meta.duration, cover: meta.cover || undefined, lyrics: meta.lyrics || undefined });
+              } else {
+                updatedTracks.push(track);
+              }
             }
           } catch {
             updatedTracks.push(track);
@@ -1793,7 +1826,7 @@ const startProgressTracking = () => {
         }
       }, 50);
     } catch (e) { console.error("Failed to load playlist:", e); }
-  }, [tracks]);
+  }, [tracks, optimizedMode]);
 
   const handleCreatePlaylist = () => {
     setShowCreatePlaylist(true);
@@ -2062,7 +2095,7 @@ const startProgressTracking = () => {
 
           <div className="max-w-7xl mx-auto">
             {currentView === "library" && (
-              <LibraryPage 
+              <LibraryPage
                 tracks={filteredTracks}
                 currentTrack={currentTrack}
                 isPlaying={isPlaying}
@@ -2080,6 +2113,7 @@ const startProgressTracking = () => {
                 playlistCovers={playlistCovers}
                 onSelectPlaylist={handleSelectPlaylist}
                 dominantColor={dominantColor}
+                optimizedMode={optimizedMode}
               />
             )}
             {currentView === "playlists" && (
@@ -2102,7 +2136,7 @@ const startProgressTracking = () => {
               <SearchPage onPlayTrack={playTrack} />
             )}
             {currentView === "settings" && (
-              <SettingsPage 
+              <SettingsPage
                 libraryPath={libraryPath}
                 setLibraryPath={setLibraryPath}
                 onSave={loadLibrary}
@@ -2118,6 +2152,8 @@ const startProgressTracking = () => {
                 setEqBands={setEqBands}
                 EQ_PRESETS={EQ_PRESETS}
                 EQ_FREQUENCIES={EQ_FREQUENCIES}
+                optimizedMode={optimizedMode}
+                setOptimizedMode={setOptimizedMode}
               />
             )}
             {currentView === "lyrics" && (
@@ -2201,14 +2237,24 @@ const startProgressTracking = () => {
                   <button onClick={() => { setSearchQuery(currentTrack.artist); setCurrentView("library"); }} className="text-sm text-zinc-300 drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)] font-medium hover:text-primary transition-colors">{currentTrack.artist}</button>
                 </div>
                 
-                <div className="w-full aspect-square rounded-xl overflow-hidden shadow-[0_8px_30px_rgba(0,0,0,0.5)] mb-4 bg-surface-container shrink-0">
+                <div
+                  className="w-full aspect-square rounded-xl overflow-hidden shadow-[0_8px_30px_rgba(0,0,0,0.5)] mb-4 bg-surface-container shrink-0 cursor-pointer group relative"
+                  onClick={() => setShowOverlay(true)}
+                >
                   {currentTrack.cover ? (
-                    <img src={currentTrack.cover} alt="" className="w-full h-full object-cover" />
+                    <img src={currentTrack.cover} alt="" className="w-full h-full object-cover group-hover:brightness-75 transition-all duration-200" />
                   ) : (
                     <div className="w-full h-full bg-gradient-to-br from-primary/20 to-secondary-container/30 flex items-center justify-center">
                       <Music className="w-1/2 h-1/2 text-white/20" />
                     </div>
                   )}
+                  <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                    <div className="w-12 h-12 rounded-full bg-black/50 backdrop-blur-sm flex items-center justify-center border border-white/20">
+                      <svg className="w-5 h-5 text-white ml-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15" />
+                      </svg>
+                    </div>
+                  </div>
                 </div>
                 
                 <div className="text-center mb-3 shrink-0">
@@ -2373,6 +2419,7 @@ const startProgressTracking = () => {
         onPrevTrack={prevTrack}
         onNextTrack={nextTrack}
         onSeek={handleOverlaySeek}
+        dominantColor={sidebarBg}
       />
     </div>
   );

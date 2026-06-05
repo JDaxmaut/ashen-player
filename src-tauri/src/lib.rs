@@ -14,6 +14,7 @@ const CREATE_NO_WINDOW: u32 = 0x08000000;
 use base64::{engine::general_purpose, Engine as _};
 use image::imageops::FilterType;
 use image::GenericImageView;
+use lofty::config::ParseOptions;
 use lofty::file::{AudioFile, TaggedFileExt};
 use lofty::probe::Probe;
 use lofty::tag::{Accessor, ItemKey};
@@ -99,6 +100,39 @@ fn get_audio_metadata(path: String) -> Option<AudioMetadata> {
     let lyrics = tag.get_string(ItemKey::UnsyncLyrics).map(|s| s.to_string());
     
     Some(AudioMetadata { title, artist, album, duration, cover, lyrics })
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AudioMetadataNocover {
+    pub title: String,
+    pub artist: String,
+    pub album: String,
+    pub duration: u32,
+    pub lyrics: Option<String>,
+}
+
+#[tauri::command]
+fn get_audio_metadata_no_cover(path: String) -> Option<AudioMetadataNocover> {
+    if !Path::new(&path).exists() {
+        return None;
+    }
+    let tagged_file = Probe::open(&path)
+        .ok()?
+        .options(ParseOptions::new().read_cover_art(false))
+        .read()
+        .ok()?;
+    let tag = tagged_file.primary_tag().or_else(|| tagged_file.first_tag())?;
+    let properties = tagged_file.properties();
+    let duration = properties.duration().as_secs() as u32;
+    let filename = Path::new(&path)
+        .file_stem()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_else(|| "Unknown".to_string());
+    let title = tag.title().map(|s| s.to_string()).unwrap_or(filename);
+    let artist = tag.artist().map(|s| s.to_string()).unwrap_or_else(|| "Unknown Artist".to_string());
+    let album = tag.album().map(|s| s.to_string()).unwrap_or_else(|| "Unknown Album".to_string());
+    let lyrics = tag.get_string(ItemKey::UnsyncLyrics).map(|s| s.to_string());
+    Some(AudioMetadataNocover { title, artist, album, duration, lyrics })
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -512,10 +546,11 @@ fn apply_vibrancy(window: tauri::Window) {
 }
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_window_state::Builder::default().build())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
-        .invoke_handler(tauri::generate_handler![get_music_folder, get_audio_cover, get_audio_cover_thumbnail, get_audio_metadata, get_yandex_bio, get_track_loudness, save_audio_cover, get_folder_cover, get_folder_cover_thumbnail, search_youtube, download_youtube, get_audio_devices, apply_vibrancy])
+        .invoke_handler(tauri::generate_handler![get_music_folder, get_audio_cover, get_audio_cover_thumbnail, get_audio_metadata, get_audio_metadata_no_cover, get_yandex_bio, get_track_loudness, save_audio_cover, get_folder_cover, get_folder_cover_thumbnail, search_youtube, download_youtube, get_audio_devices, apply_vibrancy])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

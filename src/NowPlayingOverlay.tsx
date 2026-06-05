@@ -1,6 +1,6 @@
 import { useCallback } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { ChevronDown, Pause, Play, SkipBack, SkipForward } from "lucide-react";
+import { ChevronDown, Pause, Play, SkipBack, SkipForward, Music } from "lucide-react";
 
 interface Track {
   id: number;
@@ -22,6 +22,7 @@ interface NowPlayingOverlayProps {
   onPrevTrack: () => void;
   onNextTrack: () => void;
   onSeek?: (progress: number) => void;
+  dominantColor?: string;
 }
 
 const NowPlayingOverlay: React.FC<NowPlayingOverlayProps> = ({
@@ -34,16 +35,20 @@ const NowPlayingOverlay: React.FC<NowPlayingOverlayProps> = ({
   onPrevTrack,
   onNextTrack,
   onSeek,
+  dominantColor = "#f7bd48",
 }) => {
-  const dominantColor = "#f7bd48";
+  const accent = dominantColor || "#f7bd48";
 
   const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
+    const s = Math.max(0, Math.floor(seconds));
+    const mins = Math.floor(s / 60);
+    const secs = s % 60;
     return `${mins}:${secs.toString().padStart(2, "0")}`;
   };
 
-  const handleClick = useCallback<React.MouseEventHandler<HTMLDivElement>>((e) => {
+  const currentTime = ((progress / 100) * (currentTrack?.duration || 0));
+
+  const handleSeekClick = useCallback<React.MouseEventHandler<HTMLDivElement>>((e) => {
     if (!onSeek) return;
     const rect = e.currentTarget.getBoundingClientRect();
     const x = e.clientX - rect.left;
@@ -58,148 +63,150 @@ const NowPlayingOverlay: React.FC<NowPlayingOverlayProps> = ({
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          transition={{ duration: 0.3 }}
-          className="fixed inset-0 z-[100] flex flex-col overflow-hidden"
-          style={{
-            background: `linear-gradient(135deg, ${dominantColor}10 0%, #0a0a0c 30%, #0a0a0c 70%, ${dominantColor}05 100%)`,
-          }}
+          transition={{ duration: 0.35 }}
+          className="fixed inset-0 z-[100] overflow-hidden flex flex-col"
         >
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_30%,rgba(0,0,0,0.7)_100%)" />
-
-          <div
-            className="absolute inset-0 opacity-15 blur-[60px]"
-            style={{
-              backgroundImage: currentTrack.cover ? `url(${currentTrack.cover})` : "none",
-              backgroundSize: "cover",
-              backgroundPosition: "center",
-            }}
-          />
-          <div className="absolute inset-0 bg-gradient-to-b from-black/80 via-transparent to-black/90" />
-
-          <div
-            className="absolute inset-0 pointer-events-none opacity-[0.015] mix-blend-overlay"
-            style={{
-              backgroundImage:
-                'url("data:image/svg+xml,%3Csvg viewBox=\'0 0 200 200\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cfilter id=\'noiseFilter\'%3E%3CfeTurbulence type=\'fractalNoise\' baseFrequency=\'0.9\' numOctaves=\'3\' stitchTiles=\'stitch\'/%3E%3C/filter%3E%3Crect width=\'100%25\' height=\'100%25\' filter=\'url(%23noiseFilter)\'/%3E%3C/svg%3E")',
-            }}
-          />
-
-          <div className="absolute top-4 left-4 text-[9px] text-white/20 uppercase tracking-widest font-mono z-50">
-            {currentTrack.duration > 0 ? formatTime(currentTrack.duration) : "0:00"}
+          {/* Blurred cover background */}
+          <div className="absolute inset-0">
+            {currentTrack.cover ? (
+              <img
+                src={currentTrack.cover}
+                alt=""
+                className="w-full h-full object-cover scale-110"
+                style={{ filter: "blur(50px) saturate(1.4) brightness(0.28)" }}
+              />
+            ) : (
+              <div className="w-full h-full" style={{ background: `radial-gradient(ellipse at 50% 30%, ${accent}30 0%, #080808 70%)` }} />
+            )}
+            <div className="absolute inset-0 bg-black/40" />
           </div>
 
+          {/* Close */}
           <button
             onClick={onClose}
-            className="absolute top-4 left-1/2 -translate-x-1/2 z-50 p-2.5 rounded-full bg-white/5 hover:bg-white/15 border border-white/10 transition-all cursor-pointer"
+            className="absolute top-5 left-1/2 -translate-x-1/2 z-50 p-2 rounded-full bg-white/8 hover:bg-white/15 border border-white/10 backdrop-blur-sm transition-all cursor-pointer"
           >
-            <ChevronDown className="w-4 h-4 text-white/70" />
+            <ChevronDown className="w-5 h-5 text-white/70" />
           </button>
 
-          <div className="absolute top-4 right-4 flex items-center gap-3 z-50">
-            <span className="text-[9px] text-white/25 uppercase tracking-widest font-mono">24-bit</span>
-            <span className="text-[9px] text-white/25 uppercase tracking-widest font-mono">44.1kHz</span>
-            <span className="text-[9px] text-white/25 uppercase tracking-widest font-mono">FLAC</span>
-          </div>
+          {/* Content */}
+          <div className="relative z-10 flex flex-col items-center justify-center flex-1 px-10 pt-14 pb-10 gap-0">
 
-          <div className="flex-1 flex flex-col items-center justify-center px-6 pt-16 pb-4 relative z-10">
+            {/* Cover */}
             <motion.div
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              transition={{ duration: 0.4, delay: 0.1 }}
-              className="relative mb-10"
+              initial={{ scale: 0.82, opacity: 0, y: 24 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.88, opacity: 0, y: 16 }}
+              transition={{ duration: 0.45, ease: [0.34, 1.36, 0.64, 1] }}
+              className="relative mb-9"
             >
-              <div
-                className="w-48 h-48 sm:w-56 sm:h-56 md:w-64 md:h-64 lg:w-72 lg:h-72 xl:w-80 xl:h-80 rounded-xl overflow-hidden transition-all"
+              {/* Ambient glow behind cover */}
+              <motion.div
+                className="absolute -inset-8 rounded-3xl blur-3xl pointer-events-none"
+                animate={isPlaying ? { opacity: [0.35, 0.6, 0.35] } : { opacity: 0.25 }}
+                transition={{ duration: 2.8, repeat: Infinity, ease: "easeInOut" }}
                 style={{
-                  boxShadow: `0 0 80px ${dominantColor}25, 0 20px 60px rgba(0,0,0,0.7), inset 0 0 0 1px rgba(255,255,255,0.05)`,
+                  background: currentTrack.cover
+                    ? `url(${currentTrack.cover}) center/cover`
+                    : accent,
+                  opacity: 0.35,
+                }}
+              />
+
+              <div
+                className="relative rounded-2xl overflow-hidden"
+                style={{
+                  width: "min(54vmin, 420px)",
+                  height: "min(54vmin, 420px)",
+                  boxShadow: `0 32px 80px rgba(0,0,0,0.75), 0 0 0 1px rgba(255,255,255,0.06), 0 0 60px ${accent}30`,
                 }}
               >
                 {currentTrack.cover ? (
                   <img src={currentTrack.cover} alt="" className="w-full h-full object-cover" />
                 ) : (
-                  <div className="w-full h-full bg-gradient-to-br from-primary/20 to-secondary-container/20 flex items-center justify-center">
-                    <div className="w-20 h-20 rounded-full bg-primary/20 flex items-center justify-center">
-                      <div className="w-14 h-14 rounded-full bg-primary/30" />
-                    </div>
+                  <div
+                    className="w-full h-full flex items-center justify-center"
+                    style={{ background: `linear-gradient(135deg, ${accent}20, #1a1a1a)` }}
+                  >
+                    <Music className="text-white/15" style={{ width: "35%", height: "35%" }} />
                   </div>
                 )}
               </div>
-              <motion.div
-                className="absolute -inset-8 rounded-3xl opacity-30 blur-3xl pointer-events-none"
-                animate={isPlaying ? { opacity: [0.3, 0.5, 0.3] } : { opacity: 0.3 }}
-                transition={isPlaying ? { duration: 2, repeat: Infinity } : {}}
-                style={{
-                  background: currentTrack.cover ? `url(${currentTrack.cover})` : dominantColor,
-                  backgroundSize: "cover",
-                  backgroundPosition: "center",
-                  backgroundRepeat: "no-repeat",
-                }}
-              />
             </motion.div>
 
+            {/* Track info */}
             <motion.div
-              initial={{ y: 15, opacity: 0 }}
+              initial={{ y: 18, opacity: 0 }}
               animate={{ y: 0, opacity: 1 }}
-              transition={{ duration: 0.4, delay: 0.15 }}
-              className="text-center mb-8"
+              transition={{ duration: 0.4, delay: 0.12 }}
+              className="text-center mb-7 w-full max-w-md"
             >
-              <h2
-                className="text-4xl md:text-6xl font-serif text-white mb-3 tracking-wide"
-                style={{ fontFamily: "Cormorant Garamond, Georgia, serif" }}
-              >
+              <h2 className="text-3xl sm:text-4xl font-bold text-white leading-tight mb-2 truncate px-2">
                 {currentTrack.title}
               </h2>
-              <p className="text-base md:text-lg text-white/40 font-light tracking-[0.2em] uppercase">
-                {currentTrack.artist}
-              </p>
+              <p className="text-white/55 text-base sm:text-lg tracking-wide truncate">{currentTrack.artist}</p>
+              {currentTrack.album && currentTrack.album !== "Unknown Album" && (
+                <p className="text-white/28 text-sm mt-1 truncate">{currentTrack.album}</p>
+              )}
             </motion.div>
 
-            <motion.div
-              initial={{ y: 15, opacity: 0 }}
-              animate={{ y: 0, opacity: 1 }}
-              transition={{ duration: 0.4, delay: 0.2 }}
-              className="w-full max-w-2xl mx-auto h-2 bg-white/10 rounded-full overflow-hidden cursor-pointer"
-              onClick={handleClick}
-            >
-              <div
-                className="h-full rounded-full"
-                style={{
-                  width: `${progress}%`,
-                  background: 'linear-gradient(to right, #5c1a1a 0%, #b86b1f 40%, #ffd700 100%)',
-                  boxShadow: '0 0 10px rgba(255,140,0,0.8)',
-                }}
-              />
-            </motion.div>
-
+            {/* Progress */}
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
-              transition={{ duration: 0.3, delay: 0.25 }}
-              className="flex items-center gap-10 mt-6"
+              transition={{ duration: 0.4, delay: 0.2 }}
+              className="w-full max-w-md mb-8"
+            >
+              <div
+                className="w-full h-[5px] bg-white/15 rounded-full cursor-pointer group mb-2.5"
+                onClick={handleSeekClick}
+              >
+                <div
+                  className="h-full rounded-full transition-none relative"
+                  style={{ width: `${progress}%`, background: accent }}
+                >
+                  <div
+                    className="absolute right-0 top-1/2 -translate-y-1/2 w-3.5 h-3.5 rounded-full bg-white opacity-0 group-hover:opacity-100 translate-x-1/2 transition-opacity shadow-md"
+                  />
+                </div>
+              </div>
+              <div className="flex justify-between text-xs text-white/35 font-mono tabular-nums">
+                <span>{formatTime(currentTime)}</span>
+                <span>{formatTime(currentTrack.duration)}</span>
+              </div>
+            </motion.div>
+
+            {/* Controls */}
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.35, delay: 0.25 }}
+              className="flex items-center gap-10"
             >
               <button
-                onClick={() => onPrevTrack && onPrevTrack()}
-                className="p-3 text-white/30 hover:text-white/60 transition-colors cursor-pointer"
+                onClick={onPrevTrack}
+                className="text-white/45 hover:text-white/90 transition-colors active:scale-90 duration-100"
               >
-                <SkipBack className="w-6 h-6" />
+                <SkipBack className="w-7 h-7" />
               </button>
+
               <button
                 onClick={onTogglePlay}
-                className="w-14 h-14 rounded-full bg-[#fdfbf7] flex items-center justify-center text-black hover:scale-105 active:scale-95 transition-all shadow-[0_0_20px_rgba(255,251,247,0.2),inset_0_0_0_1px_rgba(247,189,72,0.3)] cursor-pointer"
+                className="w-[68px] h-[68px] rounded-full flex items-center justify-center transition-all hover:scale-105 active:scale-95 shadow-lg"
+                style={{ background: accent, boxShadow: `0 0 30px ${accent}60` }}
               >
-                {isPlaying ? <Pause className="w-6 h-6" /> : <Play className="w-6 h-6 ml-0.5" />}
+                {isPlaying
+                  ? <Pause className="w-7 h-7 text-black" />
+                  : <Play className="w-7 h-7 text-black ml-1" />}
               </button>
+
               <button
-                onClick={() => onNextTrack && onNextTrack()}
-                className="p-3 text-white/30 hover:text-white/60 transition-colors cursor-pointer"
+                onClick={onNextTrack}
+                className="text-white/45 hover:text-white/90 transition-colors active:scale-90 duration-100"
               >
-                <SkipForward className="w-6 h-6" />
+                <SkipForward className="w-7 h-7" />
               </button>
             </motion.div>
-          </div>
-
-          <div className="absolute bottom-4 left-4 text-[10px] text-white/20 uppercase tracking-widest font-mono z-50">
-            {currentTrack.album}
           </div>
         </motion.div>
       )}
