@@ -1493,10 +1493,6 @@ function App() {
   }, []);
 
   const playTrack = useCallback(async (track: Track) => {
-    if (trackOrderRef.current.length === 0) {
-      const sorted = getSortedTracks();
-      trackOrderRef.current = sorted.map(t => t.id);
-    }
     let updatedTrack = track;
     
     if (!track.artist || track.artist === 'Unknown Artist' || !track.album || track.album === 'Unknown Album') {
