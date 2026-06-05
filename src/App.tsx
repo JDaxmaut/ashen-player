@@ -383,7 +383,7 @@ function SearchPage({ onPlayTrack }: { onPlayTrack: (track: Track) => void }) {
   );
 }
 
-function SettingsPage({ libraryPath, setLibraryPath, onSave, gaplessEnabled, setGaplessEnabled, normEnabled, setNormEnabled, eqEnabled, setEqEnabled, eqPreset, setEqPreset, eqBands, setEqBands, EQ_PRESETS, EQ_FREQUENCIES, optimizedMode, setOptimizedMode }: {
+function SettingsPage({ libraryPath, setLibraryPath, onSave, gaplessEnabled, setGaplessEnabled, normEnabled, setNormEnabled, eqEnabled, setEqEnabled, eqPreset, setEqPreset, eqBands, setEqBands, EQ_PRESETS, EQ_FREQUENCIES, optimizedMode, setOptimizedMode, crossfadeSeconds, setCrossfadeSeconds }: {
   libraryPath: string;
   setLibraryPath: (path: string) => void;
   onSave: () => void;
@@ -401,6 +401,8 @@ function SettingsPage({ libraryPath, setLibraryPath, onSave, gaplessEnabled, set
   EQ_FREQUENCIES: number[];
   optimizedMode: boolean;
   setOptimizedMode: (v: boolean) => void;
+  crossfadeSeconds: number;
+  setCrossfadeSeconds: (v: number) => void;
 }) {
   const [activeTab, setActiveTab] = useState("general");
   const [startupEnabled, setStartupEnabled] = useState(false);
@@ -607,8 +609,27 @@ function SettingsPage({ libraryPath, setLibraryPath, onSave, gaplessEnabled, set
               <h3 className="text-lg font-semibold text-white">Playback</h3>
               <div className="space-y-4">
                 <div>
-                  <label className="text-on-surface block mb-2">Crossfade (seconds)</label>
-                  <input type="range" min="0" max="12" className="w-full accent-primary" />
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="text-on-surface">Crossfade</label>
+                    <span className="text-outline text-sm">{crossfadeSeconds === 0 ? "Off" : `${crossfadeSeconds}s`}</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0"
+                    max="12"
+                    step="1"
+                    value={crossfadeSeconds}
+                    onChange={(e) => {
+                      const v = Number(e.target.value);
+                      setCrossfadeSeconds(v);
+                      saveToStorage("alora_crossfade", v);
+                    }}
+                    className="w-full accent-primary"
+                  />
+                  <div className="flex justify-between text-[10px] text-outline mt-1">
+                    <span>Off</span>
+                    <span>12s</span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1096,8 +1117,8 @@ function App() {
   const [searchQuery, setSearchQuery] = useState("");
   const [titlebarHeight, setTitlebarHeight] = useState(56);
   const [footerHeight, setFooterHeight] = useState(() => loadFromStorage("alora_footerHeight", 80));
-  const [isExpanded, setIsExpanded] = useState(true);
-  const [rightSidebarWidth, setRightSidebarWidth] = useState(300);
+  const [isExpanded, setIsExpanded] = useState(() => loadFromStorage("alora_leftExpanded", true));
+  const [rightSidebarWidth, setRightSidebarWidth] = useState(() => loadFromStorage("alora_rightSidebarWidth", 300));
   const [showQueue, setShowQueue] = useState(false);
   const [recentPlaylistIds, setRecentPlaylistIds] = useState<number[]>(() => loadFromStorage("alora_recentPlaylists", []));
   const [sidebarBg, setSidebarBg] = useState<string>('#0e0e0e');
@@ -1125,6 +1146,9 @@ function App() {
   const [gaplessEnabled, setGaplessEnabled] = useState(true);
   const [normEnabled, setNormEnabled] = useState(() => loadFromStorage("alora_normEnabled", true));
   const [optimizedMode, setOptimizedMode] = useState(() => loadFromStorage("alora_optimizedMode", false));
+  const [crossfadeSeconds, setCrossfadeSeconds] = useState(() => loadFromStorage("alora_crossfade", 0));
+  const crossfadeSecondsRef = useRef(crossfadeSeconds);
+  useEffect(() => { crossfadeSecondsRef.current = crossfadeSeconds; }, [crossfadeSeconds]);
   
   const EQ_PRESETS: Record<string, number[]> = {
     "Flat": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
@@ -1277,6 +1301,11 @@ function App() {
   };
   
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audio2Ref = useRef<HTMLAudioElement | null>(null);
+  const crossfadeIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const crossfadeActiveRef = useRef(false);
+  const crossfadeTriggeredRef = useRef(false);
+  const initiateCrossfadeRef = useRef<((t: Track) => void) | null>(null);
   const progressInterval = useRef<number | null>(null);
   const activeSrcRef = useRef<string>("");
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -1589,28 +1618,32 @@ function App() {
       return;
     }
 
+    const useCrossfade = crossfadeTriggeredRef.current && crossfadeSecondsRef.current > 0;
+    crossfadeTriggeredRef.current = false;
+    const doPlay = (t: Track) => useCrossfade ? initiateCrossfadeRef.current?.(t) : playTrack(t);
+
     if (shuffleEnabled) {
       const sorted = getSortedTracks();
       const nextIdx = Math.floor(Math.random() * sorted.length);
-      if (sorted[nextIdx]) playTrack(sorted[nextIdx]);
+      if (sorted[nextIdx]) doPlay(sorted[nextIdx]);
       return;
     }
-    
+
     if (trackOrderRef.current.length === 0) {
       const sorted = getSortedTracks();
       trackOrderRef.current = sorted.map(t => t.id);
     }
-    
+
     const currentIdx = trackOrderRef.current.indexOf(currentTrack.id);
     const nextIdx = currentIdx + 1;
-    
+
     if (nextIdx < trackOrderRef.current.length) {
       const nextId = trackOrderRef.current[nextIdx];
       const sorted = getSortedTracks();
       const nextT = sorted.find(t => t.id === nextId);
       if (nextT) {
         console.log(`[nextTrack] advancing to track ${nextT.title}`);
-        playTrack(nextT);
+        doPlay(nextT);
       }
     } else if (currentRepeat === "all" && trackOrderRef.current.length > 0) {
       const sorted = getSortedTracks();
@@ -1618,7 +1651,7 @@ function App() {
       const firstT = sorted.find(t => t.id === firstId);
       if (firstT) {
         console.log(`[nextTrack] repeat-all: wrapping to ${firstT.title}`);
-        playTrack(firstT);
+        doPlay(firstT);
       }
     } else {
       console.log("[nextTrack] end of list, no repeat — stopping");
@@ -1664,7 +1697,16 @@ const startProgressTracking = () => {
       if (!activeSrcRef.current) activeSrcRef.current = currentSrc;
       
       if (transitioningRef.current || trackTriggeredRef.current) return;
-      
+
+      const cf = crossfadeSecondsRef.current;
+      if (cf > 0.3 && !crossfadeActiveRef.current && duration > cf + 0.5 && currentTime >= duration - cf) {
+        trackTriggeredRef.current = true;
+        transitioningRef.current = true;
+        crossfadeTriggeredRef.current = true;
+        nextTrackFnRef.current?.();
+        return;
+      }
+
       if (gaplessEnabled && currentTime >= duration - 0.3) {
         console.log(`[progressInterval] gapless trigger at ${currentTime.toFixed(1)}s / ${duration.toFixed(1)}s`);
         trackTriggeredRef.current = true;
@@ -1684,6 +1726,52 @@ const startProgressTracking = () => {
     transitioningRef.current = false;
     trackTriggeredRef.current = false;
   };
+
+  const initiateCrossfade = (nextT: Track) => {
+    if (!audioRef.current || !audio2Ref.current || crossfadeActiveRef.current) return;
+    const fadeSecs = crossfadeSecondsRef.current;
+    if (fadeSecs <= 0) return;
+    crossfadeActiveRef.current = true;
+
+    const src2 = convertFileSrc(nextT.path);
+    audio2Ref.current.src = src2;
+    audio2Ref.current.volume = 0;
+    audio2Ref.current.play().catch(console.error);
+
+    const targetVol = audioRef.current.volume;
+    const steps = Math.round(fadeSecs * 20);
+    const intervalMs = (fadeSecs * 1000) / steps;
+    let step = 0;
+
+    setCurrentTrack(nextT);
+    addToHistory(nextT);
+
+    crossfadeIntervalRef.current = setInterval(() => {
+      step++;
+      const p = Math.min(step / steps, 1);
+      if (audioRef.current) audioRef.current.volume = Math.max(0, targetVol * (1 - p));
+      if (audio2Ref.current) audio2Ref.current.volume = Math.min(targetVol, targetVol * p);
+
+      if (step >= steps) {
+        if (crossfadeIntervalRef.current) { clearInterval(crossfadeIntervalRef.current); crossfadeIntervalRef.current = null; }
+        const t2 = audio2Ref.current?.currentTime ?? 0;
+        if (audioRef.current && audio2Ref.current) {
+          audioRef.current.src = src2;
+          audioRef.current.currentTime = t2;
+          audioRef.current.volume = targetVol;
+          audioRef.current.play().catch(console.error);
+          activeSrcRef.current = src2;
+          audio2Ref.current.pause();
+          audio2Ref.current.src = '';
+        }
+        crossfadeActiveRef.current = false;
+        transitioningRef.current = false;
+        trackTriggeredRef.current = false;
+        startProgressTracking();
+      }
+    }, intervalMs);
+  };
+  useEffect(() => { initiateCrossfadeRef.current = initiateCrossfade; });
 
   const handleOverlaySeek = (percent: number) => {
     if (!audioRef.current || !currentTrack) return;
@@ -1905,6 +1993,7 @@ const startProgressTracking = () => {
             nextTrackFnRef.current?.();
           }}
         />
+      <audio ref={audio2Ref} crossOrigin="anonymous" style={{ display: 'none' }} />
       
       
       
@@ -1969,7 +2058,7 @@ const startProgressTracking = () => {
         <aside className={`h-full bg-black/25 backdrop-blur-xl border-r border-white/[0.04] transition-all duration-300 ease-in-out flex flex-col py-6 fixed left-0 z-40 ${isExpanded ? 'w-64 px-4' : 'w-[72px] px-0'}`} style={{ top: titlebarHeight, height: `calc(100vh - ${titlebarHeight}px)` }}>
           <div className={`flex ${isExpanded ? 'justify-end' : 'justify-center'} mb-4`}>
             <button 
-              onClick={() => setIsExpanded(!isExpanded)}
+              onClick={() => { const v = !isExpanded; setIsExpanded(v); saveToStorage("alora_leftExpanded", v); }}
               className="w-6 h-6 flex items-center justify-center text-stone-500 hover:text-stone-300 transition-colors"
             >
               {isExpanded ? <ChevronLeft className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
@@ -2154,6 +2243,8 @@ const startProgressTracking = () => {
                 EQ_FREQUENCIES={EQ_FREQUENCIES}
                 optimizedMode={optimizedMode}
                 setOptimizedMode={setOptimizedMode}
+                crossfadeSeconds={crossfadeSeconds}
+                setCrossfadeSeconds={setCrossfadeSeconds}
               />
             )}
             {currentView === "lyrics" && (
@@ -2176,9 +2267,11 @@ const startProgressTracking = () => {
                 const newWidth = Math.max(200, Math.min(500, startWidth - (moveEvent.clientX - startX)));
                 setRightSidebarWidth(newWidth);
               };
-              const onMouseUp = () => {
+              const onMouseUp = (upEvent: MouseEvent) => {
                 document.removeEventListener('mousemove', onMouseMove);
                 document.removeEventListener('mouseup', onMouseUp);
+                const finalWidth = Math.max(200, Math.min(500, startWidth - (upEvent.clientX - startX)));
+                saveToStorage("alora_rightSidebarWidth", finalWidth);
               };
               document.addEventListener('mousemove', onMouseMove);
               document.addEventListener('mouseup', onMouseUp);
